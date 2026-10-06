@@ -1,0 +1,21 @@
+node_modules/
+.pnpm-store/
+dist/
+coverage/
+test-results/
+playwright-report/
+output/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+
+# Tracking and match-data captures are local-only.
+*.jsonl
+samples/
+apps/web/public/*.json
+tracking/
+data/
+performance/generated-*.jsonl
+*.tracking.json
