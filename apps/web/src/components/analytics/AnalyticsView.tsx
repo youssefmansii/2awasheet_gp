@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { DropZone } from '../DropZone';
 import {
+  API_BASE,
   errorMessage,
   getJson,
   isAbort,
@@ -17,22 +18,22 @@ import { Tab3LivePlayer } from './Tab3LivePlayer';
 import { ErrorBox, Panel, Spinner } from './ui';
 
 type TabKey = 'core' | 'live' | 'players';
-type Phase = 'idle' | 'checking' | 'uploading' | 'loading' | 'ready' | 'error';
+type Phase = 'idle' | 'confirm' | 'checking' | 'uploading' | 'loading' | 'ready' | 'error';
 interface Selected {
   id: string;
   origin: 'files' | 'server';
 }
 
-const fileSignature = (f: File | null): string => (f ? `${f.name}:${f.size}:${f.lastModified}` : '');
-const megabytes = (n: number): string => `${(n / 1_048_576).toFixed(0)} MB`;
+const megabytes = (n: number): string => n < 1_048_576 ? '<1 MB' : `${(n / 1_048_576).toFixed(0)} MB`;
 
 /**
  * Advanced analytics always follow the match the user opened (in Match Replay, or by dropping the files here).
  * Nothing is shown until a match is chosen: the analytics tab never falls back to "the default match".
- * Files that the server does not have yet are sent to it automatically; the heavy maths then runs on the server.
+ * Sending any selected files requires explicit approval for that exact selection.
  */
 export function AnalyticsView() {
   const [files, setFiles] = useState<MatchFiles>(getMatchFiles());
+  const [approvedFiles, setApprovedFiles] = useState<MatchFiles | null>(null);
   const [selected, setSelected] = useState<Selected | null>(null);
   const [phase, setPhase] = useState<Phase>('idle');
   const [uploadFraction, setUploadFraction] = useState(0);
@@ -47,7 +48,7 @@ export function AnalyticsView() {
   const [tab, setTab] = useState<TabKey>('core');
   const [visited, setVisited] = useState<Record<TabKey, boolean>>({ core: true, live: false, players: false });
   const [sending, setSending] = useState<string>('');
-  const sentRef = useRef<{ id: string; events: string } | null>(null);
+  const sentRef = useRef<{ id: string; files: MatchFiles } | null>(null);
 
   useEffect(() => subscribeMatchFiles(setFiles), []);
 
@@ -72,6 +73,13 @@ export function AnalyticsView() {
       setSelected((s) => (s && s.origin === 'files' ? null : s));
       return;
     }
+    if (approvedFiles !== files) {
+      setSelected(null);
+      setInfo(null);
+      setNeedId(false);
+      setPhase('confirm');
+      return;
+    }
     const ctrl = new AbortController();
     void (async () => {
       try {
@@ -87,24 +95,26 @@ export function AnalyticsView() {
         const list = await getJson<MatchList>('/api/matches', ctrl.signal);
         setServer(list);
         const onServer = list.details.find((d) => d.match_id === id);
-        const needTracking = !onServer || onServer.tracking_bytes !== tracking.size;
-        const eventsSig = fileSignature(files.events);
         const sent = sentRef.current;
-        const needEvents = files.events !== null && (needTracking || sent?.id !== id || sent.events !== eventsSig);
-        if (needTracking || needEvents) {
+        // Equal byte sizes do not establish equal content. Reuse only a File
+        // object we actually sent in this view, never another capture of the same size.
+        const needTracking = !onServer || sent?.id !== id || sent.files.tracking !== tracking;
+        const needEvents = files.events !== null && (needTracking || sent?.id !== id || sent.files.events !== files.events);
+        const needMetadata = files.metadata !== null && (needTracking || sent?.id !== id || sent.files.metadata !== files.metadata);
+        if (needTracking || needEvents || needMetadata) {
           if (!list.upload_enabled) {
             throw new Error('The analytics server cannot receive files yet. In the API terminal run:  pip install python-multipart  then restart uvicorn.');
           }
-          setSending([needTracking ? `tracking (${megabytes(tracking.size)})` : '', needEvents ? 'events' : ''].filter(Boolean).join(' + '));
+          setSending([needTracking ? `tracking (${megabytes(tracking.size)})` : '', needEvents ? 'events' : '', needMetadata ? 'metadata' : ''].filter(Boolean).join(' + '));
           setUploadFraction(0);
           setPhase('uploading');
           await uploadMatch(
-            { tracking: needTracking ? tracking : null, events: needEvents ? files.events : null, metadata: needTracking ? files.metadata : null },
+            { tracking: needTracking ? tracking : null, events: needEvents ? files.events : null, metadata: needMetadata ? files.metadata : null },
             id,
             setUploadFraction,
             ctrl.signal
           );
-          sentRef.current = { id, events: eventsSig };
+          sentRef.current = { id, files };
           setVersion((v) => v + 1);
         }
         if (ctrl.signal.aborted) return;
@@ -117,7 +127,7 @@ export function AnalyticsView() {
       }
     })();
     return () => ctrl.abort();
-  }, [files.tracking, files.events, files.metadata, confirmedId, retry]);
+  }, [files, approvedFiles, confirmedId, retry]);
 
   // ---- read the chosen match on the server (first time takes a while, later it is instant) ----
   useEffect(() => {
@@ -148,6 +158,7 @@ export function AnalyticsView() {
 
   const changeMatch = () => {
     sentRef.current = null;
+    setApprovedFiles(null);
     setConfirmedId(null);
     setNeedId(false);
     setSelected(null);
@@ -213,9 +224,21 @@ export function AnalyticsView() {
           </div>
         ) : null}
 
+        {files.tracking && approvedFiles !== files ? (
+          <Panel title="Approve analytics file upload" subtitle="Local replay does not upload files. Advanced Analytics needs a separate copy on its analytics server." right={null}>
+            <p className="break-all text-sm text-slate-200">Destination: {API_BASE}</p>
+            <p className="mt-2 text-sm text-muted">
+              Selected: {[files.tracking, files.events, files.metadata].filter((f): f is File => f !== null).map((f) => `${f.name} (${megabytes(f.size)})`).join(', ')}.
+              Files are saved on that server. Large tracking files may take time to send. This approval applies only to this selection; changed files require approval again.
+            </p>
+            <button type="button" onClick={() => setApprovedFiles(files)} className="mt-3 min-h-10 rounded-lg bg-lime px-4 text-sm font-semibold text-ink">
+              Send selected files
+            </button>
+          </Panel>
+        ) : null}
         {phase === 'checking' ? <Spinner label="Checking which files the analytics server already has…" /> : null}
         {phase === 'uploading' ? (
-          <Panel title="Sending the match to the analytics server" subtitle={`Sending ${sending}. The server computes every metric from these files (nothing leaves your computer).`} right={null}>
+          <Panel title="Sending the match to the analytics server" subtitle={`Sending ${sending} to ${API_BASE}. Files are saved there for analytics.`} right={null}>
             <div className="h-2 w-full overflow-hidden rounded bg-ink" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(uploadFraction * 100)}>
               <div className="h-full bg-lime transition-all" style={{ width: `${Math.round(uploadFraction * 100)}%` }} />
             </div>

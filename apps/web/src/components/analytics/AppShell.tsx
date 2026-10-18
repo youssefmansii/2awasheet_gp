@@ -1,7 +1,7 @@
 import { BarChart3, Play } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
+import { lazy, Suspense, useState, type ReactNode } from 'react';
 import { App } from '../../App';
-import { AnalyticsView } from './AnalyticsView';
+const AnalyticsView = lazy(() => import('./AnalyticsView').then((module) => ({ default: module.AnalyticsView })));
 
 type View = 'replay' | 'analytics';
 
@@ -46,7 +46,9 @@ export function AppShell() {
       </div>
       {analyticsOpened ? (
         <div className={view === 'analytics' ? '' : 'hidden'}>
-          <AnalyticsView />
+          <Suspense fallback={<p role="status" className="p-6 text-muted">Loading analytics…</p>}>
+            <AnalyticsView />
+          </Suspense>
         </div>
       ) : null}
     </>

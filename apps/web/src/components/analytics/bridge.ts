@@ -2,7 +2,7 @@
 //
 // The replay parses the files inside the browser and never sends them anywhere, so the Python analytics
 // server cannot see them. The replay therefore announces the File objects it was given here (one line per file
-// type in App.tsx) and the analytics tab sends them to the server when it needs them.
+// type in App.tsx). The analytics tab sends them only after explicit approval.
 //
 // Isolated on purpose: this module imports nothing from the rest of the app.
 
