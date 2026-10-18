@@ -10,7 +10,22 @@ The API uses the existing shared-key Bearer authentication and frame validator. 
 
 ## HTTP contract
 
-Use HTTPS. Every endpoint except `/health` needs `Authorization: Bearer <CV_API_KEY>`.
+Use HTTPS. Every tracking API endpoint except `/health` needs `Authorization: Bearer <CV_API_KEY>`. Documentation and its vendored assets are public; they contain no key, live session IDs or tracking captures.
+
+### Interactive Swagger documentation
+
+Open [Swagger UI](https://tracking-cv-api.youssefmansi2.workers.dev/docs). The [OpenAPI 3.1 specification](https://tracking-cv-api.youssefmansi2.workers.dev/openapi.json) can also be imported into Postman or other OpenAPI clients. The maintained source is `apps/cloudflare/src/openapi.ts`; it describes all six operations, schemas, request/response examples, error statuses, sequence rules and retention.
+
+1. Click **Authorize** and enter only your private key value, without `Bearer `.
+2. Expand `POST /api/cv/sessions`, select **Try it out**, then **Execute**. Send no body.
+3. Copy the returned session ID into the frame endpoints. Upload a batch with sequence zero, then read latest/recent frames. Use a new increasing sequence for each new batch; reuse the same sequence/content for retries.
+4. Delete your test session when finished, and **Logout** in the authorization dialog or close/reload the page.
+
+Try it out performs real operations against the same API origin, including deletion. Swagger request examples/cURL snippets can display the key you enter: do not screenshot or share those authenticated snippets. Authorization is held only in page memory and not persisted across reloads. The API key, shared-key access model, CORS and frame validation remain unchanged.
+
+Swagger UI 5.33.3 assets are pinned, copied locally by the package's dev/build/deploy commands, and served from `/docs-assets/`; no CDN, external validator, URL-config overrides or telemetry scripts are used by the page. The package's install scripts, including its Scarf dependency's install-time telemetry, remain disabled. The docs-only CSP allows same-origin scripts/connections and inline styles required by Swagger; API JSON retains its strict `default-src 'none'` policy. Generated `apps/cloudflare/public/` is ignored by Git. Its contents are a build artifact, not a place to add match files. Only three known asset paths are served publicly.
+
+`pnpm test:cloudflare` also opens an isolated headless browser, verifies the six operations, Authorize/Try it out against a random local test key, no external HTTP requests/console errors, and cleared authorization on reload. Chrome DevTools MCP is not configured here; Playwright provides the browser check. A key-free screenshot is saved in ignored `test-results/swagger-docs.png`.
 
 | Method | Path | Body/result |
 |---|---|---|
@@ -76,7 +91,7 @@ node apps/cloudflare/node_modules/wrangler/bin/wrangler.js whoami
 
 3. Confirm the intended account, service name (`tracking-cv-api`) and that no unrelated Worker will be overwritten. For multiple accounts, select the intended account explicitly with the supported Wrangler account setting; never guess.
 4. Set the secret using `wrangler secret put CV_API_KEY --config apps/cloudflare/wrangler.jsonc`; paste a privately generated random key into its prompt, not chat or a screenshot. If the Worker does not yet exist, follow the CLI's creation prompt only for the confirmed target. Share the key securely with the authorized CV team; Cloudflare does not return plaintext secrets later.
-5. Run `pnpm deploy:cloudflare`. The committed configuration creates the SQLite class with a `v1` migration. Do not delete or rename the class/migration to retry a deploy.
+5. Run `pnpm deploy:cloudflare` (this also prepares the self-hosted Swagger assets). The committed configuration creates the SQLite class with a `v1` migration. Do not delete or rename the class/migration to retry a deploy. On a new Cloudflare account, open Workers & Pages and complete the free `workers.dev` subdomain setup before the first deployment.
 6. Verify the actual returned `https://...workers.dev/health` URL, then authenticated session creation, upload and GET round-trip. Remove test sessions. A dry run or printed URL alone is not a successful deployment.
 
 Never set real keys via command-line `--var` or checked-in configuration. `.dev.vars*`, `.env*`, `.wrangler/`, dist, JSONL and compressed captures are ignored. Deployment bundles only the Worker entry point and its imports, not the repo or samples.

@@ -28,3 +28,4 @@ performance/generated-*.jsonl
 .wrangler/
 .dev.vars
 .dev.vars.*
+apps/cloudflare/public/

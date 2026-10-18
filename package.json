@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "cd apps/web && node node_modules/vite/bin/vite.js",
     "build": "tsc -p packages/shared/tsconfig.build.json && cd apps/web && node node_modules/vite/bin/vite.js build",
-    "lint": "eslint apps/web/src apps/web/vite.config.ts apps/api/src apps/api/vite.config.ts apps/cloudflare/src packages/shared/src playwright.config.ts tests/e2e scripts/run-e2e.mjs scripts/run-performance.mjs scripts/smoke-cv-api.mjs scripts/smoke-cloudflare.mjs",
+    "lint": "eslint apps/web/src apps/web/vite.config.ts apps/api/src apps/api/vite.config.ts apps/cloudflare/src apps/cloudflare/scripts packages/shared/src playwright.config.ts tests/e2e scripts/run-e2e.mjs scripts/run-performance.mjs scripts/smoke-cv-api.mjs scripts/smoke-cloudflare.mjs",
     "typecheck": "tsc -p packages/shared/tsconfig.json --noEmit && tsc -p apps/web/tsconfig.json --noEmit && tsc -p apps/api/tsconfig.json --noEmit && tsc -p apps/cloudflare/tsconfig.json --noEmit && tsc -p tsconfig.tools.json --noEmit",
     "test": "node packages/shared/node_modules/vitest/vitest.mjs run packages/shared/src apps/api/src",
     "build:api": "node apps/web/node_modules/vite/bin/vite.js build --config apps/api/vite.config.ts",

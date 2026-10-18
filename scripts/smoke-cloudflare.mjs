@@ -1,5 +1,5 @@
 /* global process, fetch, setTimeout, console */
-import { spawn } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -7,8 +7,10 @@ import { join, resolve } from 'node:path';
 import { createServer } from 'node:net';
 import { once } from 'node:events';
 import assert from 'node:assert/strict';
+import { chromium, expect } from '@playwright/test';
 
 // Local workerd + real SQLite only. No remote host, match captures or deployed keys.
+execFileSync(process.execPath, ['apps/cloudflare/scripts/prepare-assets.mjs'], { stdio: 'inherit' });
 const directory = await mkdtemp(join(tmpdir(), 'cv-cloudflare-test-'));
 const probe = createServer(); probe.listen(0, '127.0.0.1'); await once(probe, 'listening');
 const port = probe.address().port; await new Promise((resolve) => probe.close(resolve));
@@ -43,6 +45,47 @@ const frame = (i) => ({ frameNum: i, videoTimeMs: i * 40, period: 1,
 const post = (path, body) => fetch(base + path, { method: 'POST', headers, body: JSON.stringify(body) });
 try {
   await start();
+  const docs = await fetch(base + '/docs'); assert.equal(docs.status, 200);
+  assert.ok((await docs.text()).includes('swagger-ui-bundle.js'));
+  const spec = await fetch(base + '/openapi.json'); assert.equal(spec.status, 200);
+  assert.equal((await spec.json()).openapi, '3.1.0');
+  const bundle = await fetch(base + '/docs-assets/swagger-ui-bundle.js'); assert.equal(bundle.status, 200);
+  assert.ok((await bundle.text()).includes('SwaggerUIBundle'));
+  assert.equal((await fetch(base + '/docs/swagger-initializer.js')).status, 200);
+  assert.equal((await fetch(base + '/docs-assets/.env.cloudflare')).status, 401);
+  // Isolated browser; only the random local test key is entered through the real UI.
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    const errors = []; const external = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()); });
+    page.on('request', (request) => {
+      if (request.url().startsWith('http') && !request.url().startsWith(base + '/')) external.push(request.url());
+    });
+    await page.goto(base + '/docs?url=https://example.invalid/ignored-spec.json');
+    await expect(page.locator('.opblock')).toHaveCount(6);
+    await page.screenshot({ path: 'test-results/swagger-docs.png', fullPage: true });
+    await page.getByRole('button', { name: 'Authorize', exact: true }).click();
+    const dialog = page.locator('.dialog-ux');
+    await dialog.locator('input').fill(key);
+    await dialog.locator('button').filter({ hasText: /^Authorize$/ }).click();
+    await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+    const create = page.locator('#operations-Sessions-createSession');
+    await create.locator('.opblock-summary').click();
+    await create.getByRole('button', { name: 'Try it out' }).click();
+    const responsePromise = page.waitForResponse((r) => r.url() === base + '/api/cv/sessions' && r.request().method() === 'POST');
+    await create.getByRole('button', { name: 'Execute', exact: true }).click();
+    const response = await responsePromise; assert.equal(response.status(), 201);
+    const browserSession = await response.json();
+    assert.equal((await fetch(base + '/api/cv/sessions/' + browserSession.sessionId, { method: 'DELETE', headers })).status, 200);
+    assert.deepEqual(external, []); assert.deepEqual(errors, []);
+    await page.reload();
+    await expect(page.locator('.opblock')).toHaveCount(6);
+    await page.getByRole('button', { name: 'Authorize', exact: true }).click();
+    await expect(page.locator('.dialog-ux input')).toHaveValue('');
+    console.info('Swagger browser passed: six endpoints, real Authorize/Try it out, no external requests, no console errors, no persisted authorization.');
+  } finally { await browser.close(); }
   assert.equal((await fetch(base + '/api/cv/sessions', { method: 'POST' })).status, 401);
   const created = await fetch(base + '/api/cv/sessions', { method: 'POST', headers });
   assert.equal(created.status, 201); const { sessionId } = await created.json();

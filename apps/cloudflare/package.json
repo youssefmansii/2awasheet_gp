@@ -3,12 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "wrangler dev --local",
-    "deploy": "wrangler deploy",
-    "build": "wrangler deploy --dry-run --outdir dist"
+    "dev": "node scripts/prepare-assets.mjs && wrangler dev --local",
+    "deploy": "node scripts/prepare-assets.mjs && wrangler deploy",
+    "build": "node scripts/prepare-assets.mjs && wrangler deploy --dry-run --outdir dist"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20261010.1",
+    "swagger-ui-dist": "5.33.3",
     "wrangler": "4.151.1"
   }
 }

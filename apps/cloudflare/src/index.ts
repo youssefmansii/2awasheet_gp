@@ -5,8 +5,9 @@ import { cvServerConfig } from '../../api/src/cv-config';
 import { validateCvBatch } from '../../api/src/cv-validation';
 import { acceptBatch, metadata, newSession, type Session } from './session';
 import { json, failure, readJson, readBytes } from './http';
+import { documentationResponse } from './docs';
 
-interface Env { CV_API_KEY: string; CV_COORDINATOR: DurableObjectNamespace<CvCoordinator> }
+interface Env { CV_API_KEY: string; CV_COORDINATOR: DurableObjectNamespace<CvCoordinator>; DOCS_ASSETS: Fetcher }
 type SessionRow = { id: string; data: string; expires: number };
 type RateRow = { start: number; requests: number; failures: number };
 
@@ -124,7 +125,19 @@ export class CvCoordinator extends DurableObject<Env> {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     try {
-      if (request.method === 'GET' && new URL(request.url).pathname === '/health') {
+      const path = new URL(request.url).pathname;
+      if (request.method === 'GET') {
+        const docs = documentationResponse(path);
+        if (docs) return docs;
+        if (['/docs-assets/swagger-ui-bundle.js', '/docs-assets/swagger-ui.css', '/docs-assets/LICENSE'].includes(path)) {
+          const asset = await env.DOCS_ASSETS.fetch(request);
+          const headers = new Headers(asset.headers);
+          headers.set('X-Content-Type-Options', 'nosniff');
+          headers.set('Cache-Control', 'no-cache');
+          return new Response(asset.body, { status: asset.status, headers });
+        }
+      }
+      if (request.method === 'GET' && path === '/health') {
         cvServerConfig({ CV_API_KEY: env.CV_API_KEY });
         return json(200, { status: 'ok', service: 'cv-diagnostic-api', storage: 'durable-sqlite' });
       }
