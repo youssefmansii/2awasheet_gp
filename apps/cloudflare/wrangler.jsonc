@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "tracking-cv-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-18",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "durable_objects": {
+    "bindings": [{ "name": "CV_COORDINATOR", "class_name": "CvCoordinator" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["CvCoordinator"] }],
+  "observability": { "enabled": false }
+}
