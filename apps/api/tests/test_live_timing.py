@@ -45,6 +45,27 @@ class LiveTimingTests(unittest.TestCase):
         self.assertEqual(after['key_passes'], 1)
         self.assertGreater(after['xa'], 0.)
 
+    def test_pass_map_does_not_reveal_future_shot_labels(self):
+        live = self.live()
+        before = live._actions_at(60)
+        maps = live._maps(before[before.slot == 0], 'home')
+        self.assertFalse(maps['passes'][0]['key'])
+        self.assertFalse(maps['passes'][0]['assist'])
+        # Going back in time must not mutate the cached complete-match events.
+        self.assertEqual(live.table(180)[0]['assists'], 1)
+        self.assertEqual(live.table(60)[0]['assists'], 0)
+
+    def test_rebound_shot_does_not_delay_or_overwrite_first_shot_credit(self):
+        live = self.live()
+        live.m.events.loc[1, ['shot_outcome', 'is_goal']] = ['S', False]
+        later = live.m.events.iloc[1].copy()
+        later['frame_idx'], later['frame_num'], later['event_time_s'] = 210, 210, 7.
+        later['shot_outcome'], later['is_goal'] = 'G', True
+        live.m.events = pd.concat([live.m.events, later.to_frame().T], ignore_index=True)
+        self.assertEqual(live.table(180)[0]['key_passes'], 1)
+        self.assertEqual(live.table(180)[0]['assists'], 0)
+        self.assertEqual(live.table(210)[0]['assists'], 0)
+
     def physical(self, speed, period=None):
         s = np.asarray(speed, dtype=np.float32).reshape(-1, 1)
         return PhysicalIndex(SimpleNamespace(X=np.zeros_like(s), SPEED=s, fps=30.,

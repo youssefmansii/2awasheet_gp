@@ -311,6 +311,10 @@ class LivePlayers:
                           & (passes["t_ev"] >= s["t_ev"] - KEY_PASS_WINDOW_S) & (passes["eidx"] < s["eidx"])]
             if len(cand):
                 pj = cand.index[-1]  # the latest one
+                # A rebound is not a new assist by the original passer, and
+                # must not move already-earned key-pass credit into the future.
+                if bool(a.at[pj, "key"]):
+                    continue
                 a.at[pj, "key"] = True
                 a.at[pj, "xa"] = float(s["xg"])
                 a.at[pj, "assist"] = bool(s["shot_cat"] == "goal")
