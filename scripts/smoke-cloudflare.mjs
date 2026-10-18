@@ -109,10 +109,10 @@ try {
     assert.equal((await post(path + '/frames', { sequence: 1,
       frames: [{ ...frame(5), [field]: [{ trackId: 3, jerseyNum: null, x: 1, y: 2 }] }] })).status, 422);
   }
-  assert.equal((await post(path + '/frames', { sequence: 1, frames: [frame(5)], padding: 'x'.repeat(1048576) })).status, 413);
+  assert.equal((await post(path + '/frames', { sequence: 1, frames: [frame(5)], padding: 'x'.repeat(1572864) })).status, 413);
   assert.equal((await fetch(base + path + '/frames', { method: 'POST', headers: { ...headers, 'Content-Type': 'text/plain' }, body: '{}' })).status, 415);
   assert.equal((await fetch(base + path + '/latest', { headers: { ...headers, Origin: 'https://evil.invalid' } })).status, 403);
-  assert.equal((await fetch(base + path + '/frames?limit=91', { headers })).status, 400);
+  assert.equal((await fetch(base + path + '/frames?limit=301', { headers })).status, 400);
   const batch1 = { sequence: 1, frames: [frame(5)] };
   const concurrent = await Promise.all([post(path + '/frames', batch1), post(path + '/frames', batch1)]);
   for (let i = 0; i < concurrent.length; i++) {
@@ -125,9 +125,10 @@ try {
   const restored = await fetch(base + path + '/latest', { headers }); assert.equal(restored.status, 200);
   const snapshot = await restored.json(); assert.equal(snapshot.receivedFrames, 6); assert.deepEqual(snapshot.frame, frame(5));
   assert.equal((await (await post(path + '/frames', batch1)).json()).duplicate, true);
-  assert.equal((await post(path + '/frames', { sequence: 2, frames: Array.from({ length: 120 }, (_, i) => frame(i + 6)) })).status, 200);
-  const tail = await fetch(base + path + '/frames?limit=90', { headers });
-  const data = await tail.json(); assert.equal(data.retainedFrames, 90); assert.equal(data.frames[0].frameNum, 36);
+  assert.equal((await post(path + '/frames', { sequence: 2, frames: Array.from({ length: 301 }, (_, i) => frame(i + 6)) })).status, 422);
+  assert.equal((await post(path + '/frames', { sequence: 2, frames: Array.from({ length: 300 }, (_, i) => frame(i + 6)) })).status, 200);
+  const tail = await fetch(base + path + '/frames?limit=300', { headers });
+  const data = await tail.json(); assert.equal(data.retainedFrames, 300); assert.equal(data.frames[0].frameNum, 6);
   assert.equal(tail.headers.get('Cache-Control'), 'no-store');
   assert.equal(tail.headers.get('X-Content-Type-Options'), 'nosniff');
   assert.equal((await fetch(base + '/api/live/sessions', { method: 'POST', headers })).status, 404);

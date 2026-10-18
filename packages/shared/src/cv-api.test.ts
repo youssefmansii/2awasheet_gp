@@ -120,7 +120,7 @@ describe('CV diagnostic API', () => {
     const { base, create } = await fixture(); const { sessionId } = await create();
     const path = `${base}/api/cv/sessions/${sessionId}/frames`;
     for (const body of [null, [], {}, { sequence: -1, frames: [cvFrame()] }, { sequence: 0, frames: [] },
-      { sequence: 0, frames: Array.from({ length: 121 }, (_, index) => cvFrame(index)) }]) {
+      { sequence: 0, frames: Array.from({ length: 301 }, (_, index) => cvFrame(index)) }]) {
       expect((await fetch(path, { method: 'POST', headers, body: JSON.stringify(body) })).status).toBe(422);
     }
     expect((await fetch(path, { method: 'POST', headers, body: '{broken' })).status).toBe(400);
@@ -156,14 +156,14 @@ describe('CV diagnostic API', () => {
     const { base, create } = await fixture(); const { sessionId } = await create();
     const path = `${base}/api/cv/sessions/${sessionId}`;
     for (let sequence = 0; sequence < 34; sequence += 1) {
-      const frames = Array.from({ length: 4 }, (_, index) => cvFrame(sequence * 4 + index));
+      const frames = Array.from({ length: 10 }, (_, index) => cvFrame(sequence * 10 + index));
       expect((await fetch(path + '/frames', { method: 'POST', headers, body: JSON.stringify({ sequence, frames }) })).status).toBe(200);
     }
     const tail = await (await fetch(path + '/frames?limit=90', { headers })).json();
-    expect(tail.receivedFrames).toBe(136); expect(tail.retainedFrames).toBe(90);
-    expect(tail.frames[0].frameNum).toBe(46); expect(tail.frames.at(-1).frameNum).toBe(135);
+    expect(tail.receivedFrames).toBe(340); expect(tail.retainedFrames).toBe(300);
+    expect(tail.frames[0].frameNum).toBe(250); expect(tail.frames.at(-1).frameNum).toBe(339);
     expect((await fetch(path + '/frames', { method: 'POST', headers, body: JSON.stringify({ sequence: 0, frames: [cvFrame()] }) })).status).toBe(409);
-    for (const limit of ['0', '91', '1.5', 'bad']) expect((await fetch(path + '/frames?limit=' + limit, { headers })).status).toBe(400);
+    for (const limit of ['0', '301', '1.5', 'bad']) expect((await fetch(path + '/frames?limit=' + limit, { headers })).status).toBe(400);
   });
 
   it('enforces a byte cap even before the retained-frame count cap is reached', async () => {

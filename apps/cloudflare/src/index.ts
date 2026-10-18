@@ -95,7 +95,7 @@ export class CvCoordinator extends DurableObject<Env> {
       }
       if (request.method === 'GET' && action === 'frames') {
         const text = url.searchParams.get('limit') ?? '30'; const limit = Number(text);
-        if (!/^\d+$/.test(text) || !Number.isInteger(limit) || limit < 1 || limit > 90) throw new CvError(400, 'INVALID_LIMIT', 'limit must be an integer from 1 to 90.');
+        if (!/^\d+$/.test(text) || !Number.isInteger(limit) || limit < 1 || limit > CV_LIMITS.retainedFrames) throw new CvError(400, 'INVALID_LIMIT', 'limit must be an integer from 1 to 300.');
         return json(200, { ...metadata(session), frames: session.frames.slice(-limit).map((item) => item.frame) });
       }
       if (request.method === 'POST' && action === 'frames') {

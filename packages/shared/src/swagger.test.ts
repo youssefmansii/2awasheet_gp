@@ -18,7 +18,8 @@ describe('Swagger documentation contract', () => {
     expect(() => validateCvBatch(example)).not.toThrow();
     expect(openApi.components.schemas.Player.required).toContain('jerseyNum');
     expect(openApi.components.schemas.Batch.properties.frames.minItems).toBe(1);
-    expect(openApi.components.schemas.Batch.properties.frames.maxItems).toBe(120);
+    expect(openApi.components.schemas.Batch.properties.frames.maxItems).toBe(300);
+    expect(openApi.components.schemas.Recent.allOf[1]).toMatchObject({ properties: { frames: { maxItems: 300 } } });
   });
   it('resolves every local schema reference and gives every operation response examples', () => {
     const visit = (value: unknown) => {

@@ -21,7 +21,7 @@ const errors: Record<number, [string, string]> = {
   404: ['NOT_FOUND', 'Unknown or expired session/endpoint. Create a new session if needed.'],
   408: ['REQUEST_TIMEOUT', 'Upload body timed out after 10 seconds.'],
   409: ['SEQUENCE_CONFLICT', 'Sequence already accepted with different content.'],
-  413: ['BODY_TOO_LARGE', 'JSON body exceeds 1 MiB.'],
+  413: ['BODY_TOO_LARGE', 'JSON body exceeds 1.5 MiB.'],
   415: ['UNSUPPORTED_MEDIA_TYPE', 'Send uncompressed application/json, not JSONL or multipart.'],
   422: ['INVALID_FRAME', 'frames[0].homePlayers[0]: jerseyNum is required.'],
   429: ['RATE_LIMITED', 'Request, failed-auth or four-active-session limit reached; retry later.'],
@@ -48,8 +48,8 @@ const playerArray = { type: 'array', maxItems: CV_LIMITS.teamPlayers, items: ref
 
 export const openApi = {
   openapi: '3.1.0',
-  info: { title: 'Tracking Studio — CV API', version: '1.0.0',
-    description: 'Backend-only prototype for one trusted team. Click Authorize and paste the API key value WITHOUT the Bearer prefix. The owner shares the key privately; session creation returns an ID, not a key.\n\nWorkflow: create session (no body), upload batches starting at sequence 0, read latest/recent frames, then delete the session. Try it out makes REAL requests, including creation and deletion. Your key is not saved across reloads.\n\nBatch size is flexible: 1–120 frames and at most 1 MiB of UTF-8 JSON per request. Send all available players in each frame. No gzip, multipart or JSONL-file uploads on these endpoints.\n\nSessions retain only the latest 90 frames AND 1 MiB of serialized frame data (plus metadata/32 retry receipts), not a full match. Idle expiry: 15 minutes without a newly accepted upload; absolute expiry: 2 hours. Reads/retries do not extend expiry. Four active sessions maximum. Global limits: 1,200 non-documentation/non-health requests per minute; after 30 failed authentications per minute, further failures return 429. Cloudflare quotas also apply. All key holders can access/delete known sessions. Use consented diagnostic data only.' },
+  info: { title: 'Tracking Studio — CV API', version: '1.1.0',
+    description: 'Backend-only prototype for one trusted team. Click Authorize and paste the API key value WITHOUT the Bearer prefix. The owner shares the key privately; session creation returns an ID, not a key.\n\nWorkflow: create session (no body), upload batches starting at sequence 0, read latest/recent frames, then delete the session. Try it out makes REAL requests, including creation and deletion. Your key is not saved across reloads.\n\nBatch size is flexible: 1–300 frames and at most 1.5 MiB of UTF-8 JSON per request. Send all available players in each frame. No gzip, multipart or JSONL-file uploads on these endpoints.\n\nSessions retain only the latest 300 frames AND 1.5 MiB of serialized frame data (plus metadata/32 retry receipts), not a full match. Idle expiry: 15 minutes without a newly accepted upload; absolute expiry: 2 hours. Reads/retries do not extend expiry. Four active sessions maximum. Global limits: 1,200 non-documentation/non-health requests per minute; after 30 failed authentications per minute, further failures return 429. Cloudflare quotas also apply. All key holders can access/delete known sessions. Use consented diagnostic data only.' },
   servers: [{ url: '/', description: 'This API instance (same origin)' }],
   security: [{ bearerAuth: [] }],
   tags: [{ name: 'Status', description: 'Public health/configuration status.' },
@@ -71,13 +71,13 @@ export const openApi = {
     '/api/cv/sessions/{sessionId}/frames': {
       post: { tags: ['Frames'], operationId: 'uploadFrames', summary: 'Upload a flexible batch of tracking frames',
         description: 'sequence is the BATCH number, not a frame number. Start at 0; increment for each newly accepted batch. Keep frameNum and videoTimeMs strictly increasing within/across new batches. After an uncertain response, retry the exact same sequence/content. The last 32 receipts support duplicate=true without double-counting. Parsed JSON property order is part of the retry hash; whitespace is not.\n\nAll included players require jerseyNum; trackId is optional metadata, never a replacement. Coordinates must be pitch metres, not pixels. Extra provider fields are preserved; all numbers must be finite and JSON nesting cannot exceed 64 levels. Match ID cannot change within one session.\n\n409 codes: SEQUENCE_CONFLICT (changed/skipped/old sequence), FRAME_OVERLAP, MATCH_CHANGED, UPLOAD_IN_PROGRESS. For an in-flight upload, retry the same batch later. Validation is atomic: no partial batch commits.',
-        parameters: [sessionParameter], requestBody: { required: true, description: 'Uncompressed JSON envelope; 1–120 frames and at most 1 MiB total.',
+        parameters: [sessionParameter], requestBody: { required: true, description: 'Uncompressed JSON envelope; 1–300 frames and at most 1.5 MiB total.',
           content: content(ref('Batch'), { sequence: 0, frames: [frameExample] }) },
         responses: { '200': ok('Receipt', 'Accepted new batch, or replayed receipt with duplicate=true.', receiptExample), ...commonErrors(), ...errorResponses(400, 408, 409, 413, 415, 422) } },
       get: { tags: ['Frames'], operationId: 'getRecentFrames', summary: 'Read recent retained frames',
         description: 'Returns a bounded tail, oldest first. Not full-match history. Fewer frames may be returned due to the byte cap. GET does not extend expiry.',
         parameters: [sessionParameter, { name: 'limit', in: 'query', required: false, description: 'Maximum frames to return.',
-          schema: { type: 'integer', minimum: 1, maximum: 90, default: 30 }, example: 30 }],
+          schema: { type: 'integer', minimum: 1, maximum: CV_LIMITS.retainedFrames, default: 30 }, example: 30 }],
         responses: { '200': ok('Recent', 'Recent original frames and session metadata.', { ...activeExample, frames: [frameExample] }), ...commonErrors(), ...errorResponses(400) } }
     }
   },
@@ -113,7 +113,7 @@ export const openApi = {
           receivedFrames: { ...nonnegative, description: 'Total accepted frames, including those evicted from the buffer; retries do not increase it.' },
           retainedFrames: { type: 'integer', minimum: 0, maximum: CV_LIMITS.retainedFrames }, warnings }, examples: [sessionExample] },
       Latest: { allOf: [ref('Session'), { type: 'object', required: ['frame'], properties: { frame: { anyOf: [ref('Frame'), { type: 'null' }] } } }] },
-      Recent: { allOf: [ref('Session'), { type: 'object', required: ['frames'], properties: { frames: { type: 'array', maxItems: 90, items: ref('Frame') } } }] },
+      Recent: { allOf: [ref('Session'), { type: 'object', required: ['frames'], properties: { frames: { type: 'array', maxItems: CV_LIMITS.retainedFrames, items: ref('Frame') } } }] },
       Receipt: { type: 'object', required: ['sessionId', 'sequence', 'acceptedFrames', 'receivedFrames', 'receivedAt', 'warnings', 'duplicate'],
         properties: { sessionId: { type: 'string', pattern: '^[a-f0-9]{32}$' }, sequence: nonnegative,
           acceptedFrames: { type: 'integer', minimum: 1, maximum: CV_LIMITS.batchFrames }, receivedFrames: nonnegative,

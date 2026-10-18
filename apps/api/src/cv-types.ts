@@ -30,8 +30,9 @@ export interface CvReceipt {
 }
 
 export const CV_LIMITS = Object.freeze({
-  bodyBytes: 1024 * 1024, batchFrames: 120, teamPlayers: 15,
-  retainedFrames: 90, retainedBytes: 1024 * 1024, receipts: 32, sessions: 4,
+  // Retained data plus wrappers/32 bounded receipts must fit Cloudflare's 2 MB SQLite row.
+  bodyBytes: 1536 * 1024, batchFrames: 300, teamPlayers: 15,
+  retainedFrames: 300, retainedBytes: 1536 * 1024, receipts: 32, sessions: 4,
   idleMs: 15 * 60 * 1000, lifetimeMs: 2 * 60 * 60 * 1000,
   bodyReadMs: 10000, requestsPerMinute: 1200, failedAuthPerMinute: 30
 });

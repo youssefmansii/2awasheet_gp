@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { newSession, acceptBatch, metadata, expired } from '../../../apps/cloudflare/src/session';
 import { validateCvBatch } from '../../../apps/api/src/cv-validation';
+import { CV_LIMITS } from '../../../apps/api/src/cv-types';
+import { readFileSync, existsSync } from 'node:fs';
 
 const frame = (i: number) => ({ frameNum: i, videoTimeMs: i * 40, period: 1,
   periodGameClockTime: i / 25, homePlayers: [{ jerseyNum: '10', x: i, y: 2 }], awayPlayers: [], balls: [] });
@@ -8,13 +10,13 @@ const batch = (sequence: number, start: number, count: number) => validateCvBatc
   frames: Array.from({ length: count }, (_, i) => frame(start + i)) });
 
 describe('Cloudflare durable session state', () => {
-  it.each([1, 5, 25, 120])('accepts flexible batches of %i original frames', (count) => {
+  it.each([1, 5, 25, 120, 300])('accepts flexible batches of %i original frames', (count) => {
     const session = newSession('a'.repeat(32), 1000);
     const result = acceptBatch(session, batch(0, 0, count), 2000);
     expect(result.acceptedFrames).toBe(count);
     expect(metadata(session).receivedFrames).toBe(count);
     expect(session.frames.at(-1)?.frame).toEqual(frame(count - 1));
-    expect(session.frames.length).toBe(Math.min(count, 90));
+    expect(session.frames.length).toBe(count);
   });
   it('survives JSON storage and safely replays a duplicate without extending expiry', () => {
     const session = newSession('b'.repeat(32), 1000);
@@ -34,9 +36,33 @@ describe('Cloudflare durable session state', () => {
       data.frames[0]!.extra = 'x'.repeat(100000);
       acceptBatch(session, data, i + 1);
     }
-    expect(session.bytes).toBeLessThanOrEqual(1024 * 1024);
+    expect(session.bytes).toBeLessThanOrEqual(CV_LIMITS.retainedBytes);
+    expect(Buffer.byteLength(JSON.stringify(session))).toBeLessThan(2_000_000);
     expect(session.receipts).toHaveLength(32);
     expect(session.receivedFrames).toBe(40);
+  });
+  it('retains a 300-frame batch, rejects 301, and preserves a chronological bounded tail', () => {
+    const session = newSession('f'.repeat(32), 0);
+    acceptBatch(session, batch(0, 0, 300), 1);
+    expect(() => batch(1, 300, 301)).toThrow('1–300');
+    acceptBatch(session, batch(1, 300, 10), 2);
+    expect(session.frames).toHaveLength(300);
+    expect(session.frames[0]!.frame.frameNum).toBe(10);
+    expect(session.frames.at(-1)!.frame.frameNum).toBe(309);
+  });
+  it('fits a full-size 300-frame batch in both the request cap and SQLite snapshot', () => {
+    // Exercise the real capture locally without requiring private files in public checkouts.
+    const path = 'samples/3816-10s.jsonl';
+    const frames = existsSync(path)
+      ? readFileSync(path, 'utf8').trim().split(/\r?\n/).slice(0, 300).map((line) => JSON.parse(line))
+      : Array.from({ length: 300 }, (_, i) => ({ ...frame(i), diagnosticPadding: 'x'.repeat(4100) }));
+    expect(frames).toHaveLength(300);
+    const input = validateCvBatch({ sequence: 0, frames });
+    expect(Buffer.byteLength(JSON.stringify(input))).toBeGreaterThan(1024 * 1024);
+    expect(Buffer.byteLength(JSON.stringify(input))).toBeLessThan(CV_LIMITS.bodyBytes);
+    const session = newSession('f'.repeat(32), 0); acceptBatch(session, input, 1);
+    expect(session.frames).toHaveLength(300);
+    expect(Buffer.byteLength(JSON.stringify(session))).toBeLessThan(2_000_000);
   });
   it('expires on idle and absolute limits, with no reads extending it', () => {
     const session = newSession('d'.repeat(32), 0);

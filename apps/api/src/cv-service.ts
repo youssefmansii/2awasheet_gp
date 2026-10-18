@@ -47,7 +47,7 @@ async function readJson(req: IncomingMessage): Promise<unknown> {
     const aborted = () => error(new CvError(400, 'REQUEST_ABORTED', 'Upload was interrupted.'));
     const data = (chunk: Buffer) => {
       bytes += chunk.length;
-      if (bytes > CV_LIMITS.bodyBytes) error(new CvError(413, 'BODY_TOO_LARGE', 'JSON body exceeds 1 MiB.'));
+      if (bytes > CV_LIMITS.bodyBytes) error(new CvError(413, 'BODY_TOO_LARGE', 'JSON body exceeds 1.5 MiB.'));
       else chunks.push(chunk);
     };
     const end = () => { cleanup(); resolve(Buffer.concat(chunks)); };
@@ -130,8 +130,8 @@ export function createCvService(options: CvServiceOptions) {
       if (req.method === 'GET' && action === 'frames') {
         const text = url.searchParams.get('limit') ?? '30';
         const limit = Number(text);
-        if (!/^\d+$/.test(text) || !Number.isInteger(limit) || limit < 1 || limit > 90) {
-          throw new CvError(400, 'INVALID_LIMIT', 'limit must be an integer from 1 to 90.');
+        if (!/^\d+$/.test(text) || !Number.isInteger(limit) || limit < 1 || limit > CV_LIMITS.retainedFrames) {
+          throw new CvError(400, 'INVALID_LIMIT', 'limit must be an integer from 1 to 300.');
         }
         cvJson(res, 200, { ...metadata(session), frames: session.frames.slice(-limit).map((item) => item.frame) }); return;
       }

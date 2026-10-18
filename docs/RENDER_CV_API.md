@@ -69,7 +69,7 @@ Authorization: Bearer YOUR_PRIVATE_CV_API_KEY
 | `POST /api/cv/sessions` | No body | `201`, `sessionId`, creation/expiration and zero counts |
 | `POST /api/cv/sessions/{id}/frames` | JSON `{ "sequence": 0, "frames": [...] }` | `200`, acceptance receipt, counts and compatibility warnings |
 | `GET /api/cv/sessions/{id}/latest` | No body | Last accepted original frame under `frame`, receipt time and session metadata |
-| `GET /api/cv/sessions/{id}/frames?limit=30` | `limit` from 1 to 90 | Recent retained frames, oldest first |
+| `GET /api/cv/sessions/{id}/frames?limit=30` | `limit` from 1 to 300 | Recent retained frames, oldest first |
 | `DELETE /api/cv/sessions/{id}` | No body | Deletion acknowledgment; subsequent reads return 404 |
 
 The API key is supplied by the owner, **not returned by session creation**. The server returns the session ID. Share the session ID between producer and viewer so both inspect the same data. All key holders are trusted peers with access to all known sessions; there are no individual user roles yet.
@@ -79,7 +79,7 @@ Creation is not idempotent: retrying it can create a second empty session if the
 ### Frame batch contract
 
 - Content type: `application/json`; no multipart file upload, surrounding JSONL text, gzip or `Content-Encoding: gzip` on this CV endpoint.
-- Body: a non-negative integer `sequence` and 1–120 complete consecutive frames. Begin with sequence 0.
+- Body: a non-negative integer `sequence` and 1–300 complete consecutive frames. Begin with sequence 0.
 - Required frame fields: `frameNum`, `videoTimeMs`, `homePlayers`, `awayPlayers`.
 - `frameNum`: non-negative 32-bit integer. Frame numbers and source timestamps must strictly increase inside/across newly accepted batches. They do not reset at upload boundaries.
 - `videoTimeMs`: finite, non-negative source milliseconds, not upload time. Preserve measurement intervals even if inference is slow.
@@ -90,7 +90,7 @@ Creation is not idempotent: retrying it can create a second empty session if the
 - Optional smoothed player arrays use the same rules. Empty smoothed arrays are preserved, not automatically replaced with raw positions.
 - `balls` is omitted, empty or contains one finite x/y ball observation. Optional ball z is a non-negative height. Optional ball visibility: `VISIBLE`, `ESTIMATED`, `NOT_VISIBLE`. `ballsSmoothed` is an object or null, never an array.
 - Duplicate track IDs or jersey numbers within one team/array are rejected. At most 15 entries per team array.
-- Extra provider fields are preserved as JSON, including nested objects, but the entire request is limited to 1 MiB, 64 nesting levels and finite numbers. Keeping a field does not mean the app uses it analytically. Send only data you are authorized to share.
+- Extra provider fields are preserved as JSON, including nested objects, but the entire request is limited to 1.5 MiB, 64 nesting levels and finite numbers. Keeping a field does not mean the app uses it analytically. Send only data you are authorized to share.
 
 The endpoint does not verify pitch calibration, real player identity, actual physical accuracy or whether smoothing used future frames. Those are CV responsibilities to test separately.
 
@@ -181,7 +181,7 @@ Polling every 0.5–1 second is sufficient for manual testing. This is not yet t
 ## 6. Limits, retention and errors
 
 - At most four sessions; each expires two hours after creation or 15 minutes after the last newly accepted upload, whichever is earlier. Reads and duplicate retries do not extend idle lifetime.
-- Keep at most 90 recent frames **and** 1 MiB of serialized frame content per session; older frames are discarded when either cap is exceeded. `receivedFrames` is the total accepted count, not the retained count.
+- Keep at most 300 recent frames **and** 1.5 MiB of serialized frame content per session; older frames are discarded when either cap is exceeded. `receivedFrames` is the total accepted count, not the retained count.
 - Keep 32 acceptance receipts per session. Original receipt metadata is not a durable checkpoint.
 - One in-flight upload per session. A second gets 409; deletion/expiry during upload prevents acceptance.
 - A body has a ten-second absolute read deadline. The standalone HTTP server also has header/request limits.

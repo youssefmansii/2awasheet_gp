@@ -28,7 +28,7 @@ export async function readJson(request: Request): Promise<unknown> {
 }
 
 export async function readBytes(request: Request): Promise<Uint8Array> {
-  if (Number(request.headers.get('Content-Length') ?? 0) > CV_LIMITS.bodyBytes) throw new CvError(413, 'BODY_TOO_LARGE', 'JSON body exceeds 1 MiB.');
+  if (Number(request.headers.get('Content-Length') ?? 0) > CV_LIMITS.bodyBytes) throw new CvError(413, 'BODY_TOO_LARGE', 'JSON body exceeds 1.5 MiB.');
   const reader = request.body?.getReader();
   if (!reader) return new Uint8Array();
   const chunks: Uint8Array[] = []; let bytes = 0; let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -38,7 +38,7 @@ export async function readBytes(request: Request): Promise<Uint8Array> {
         const { done, value } = await reader.read();
         if (done) return;
         bytes += value.byteLength;
-        if (bytes > CV_LIMITS.bodyBytes) throw new CvError(413, 'BODY_TOO_LARGE', 'JSON body exceeds 1 MiB.');
+        if (bytes > CV_LIMITS.bodyBytes) throw new CvError(413, 'BODY_TOO_LARGE', 'JSON body exceeds 1.5 MiB.');
         chunks.push(value);
       }
     };
