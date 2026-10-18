@@ -12,6 +12,7 @@
     "build:api": "node apps/web/node_modules/vite/bin/vite.js build --config apps/api/vite.config.ts",
     "start:api": "node apps/api/dist/server.mjs",
     "test:api": "node scripts/smoke-cv-api.mjs",
+    "test:analytics": "python -B -m unittest discover -s apps/api/tests -v",
     "dev:cloudflare": "pnpm --filter tracking-cv-cloudflare dev",
     "build:cloudflare": "pnpm --filter tracking-cv-cloudflare build",
     "deploy:cloudflare": "pnpm --filter tracking-cv-cloudflare run deploy",

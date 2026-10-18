@@ -37,6 +37,7 @@ from metrics_engine import MetricsEngine
 from player_analytics import PlayerAnalytics, _native
 from player_live import LivePlayers
 from reference_metrics import das_source
+from local_boundary import LocalAnalyticsBoundary
 
 
 # ---------------------------------------------------------------------------
@@ -160,6 +161,7 @@ app.add_middleware(
     allow_origin_regex=r"^http://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_methods=["*"], allow_headers=["*"],
 )
+app.add_middleware(LocalAnalyticsBoundary)
 
 
 # ---------------------------------------------------------------------------

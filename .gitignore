@@ -22,6 +22,7 @@ performance/generated-*.jsonl
 
 # Compressed tracking uploads must never be committed.
 *.jsonl.gz
+*.jsonl.bz2
 *.tracking.gz
 
 # Cloudflare local state and secrets (never publish captures or keys).
@@ -29,3 +30,9 @@ performance/generated-*.jsonl
 .dev.vars
 .dev.vars.*
 apps/cloudflare/public/
+
+# Python analytics generated files and local environments.
+__pycache__/
+*.py[cod]
+.venv/
+.review-python/
