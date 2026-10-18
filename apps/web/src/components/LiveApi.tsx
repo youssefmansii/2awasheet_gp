@@ -67,7 +67,7 @@ export function LiveApi({ metadata }: { metadata: MatchMetadata | null }) {
         </label>
         <label className="text-sm" htmlFor="cv-interval">GET interval
           <select id="cv-interval" value={intervalMs} disabled={active} onChange={(e) => setIntervalMs(Number(e.target.value))} className="mt-2 min-h-11 w-full rounded-xl border border-line bg-ink px-3">
-            {[250, 500, 1000, 2000, 5000].map((ms) => <option value={ms} key={ms}>{ms < 1000 ? `${ms} ms` : `${ms / 1000} s`}</option>)}
+            {[250, 500, 1000, 2000, 5000, 60000].map((ms) => <option value={ms} key={ms}>{ms === 60000 ? '1 min' : ms < 1000 ? `${ms} ms` : `${ms / 1000} s`}</option>)}
           </select>
         </label>
         <div className="flex flex-wrap gap-3 sm:col-span-2 lg:col-span-3">
@@ -79,6 +79,7 @@ export function LiveApi({ metadata }: { metadata: MatchMetadata | null }) {
           }} className="min-h-11 rounded-xl border border-line px-5 disabled:opacity-40">{paused ? 'Resume playback' : 'Pause playback'}</button>
         </div>
       </form>
+      {intervalMs === 60000 ? <p className="text-xs leading-5 text-amber-200">Checks once per minute after the first immediate request. Frequent uploads may overwrite the server’s 300-frame / 1.5 MiB buffer before the next check, causing missed frames. Playback speed is unchanged.</p> : null}
       <p className="text-xs leading-5 text-muted">The key is used only in an Authorization header, not stored in browser storage or URLs, and cleared from the form on connection. Use Local replay to read a whole file on your computer. Default live pitch: {pitch?.length ?? 105} × {pitch?.width ?? 68} m; metadata selected in Local replay is reused here.</p>
       <div role="status" className="rounded-xl bg-black/20 p-4 text-sm leading-6">
         <p className="font-semibold">{state}</p>{message ? <p className="text-muted">{message}</p> : null}

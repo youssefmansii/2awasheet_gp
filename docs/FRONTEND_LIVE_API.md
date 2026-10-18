@@ -12,7 +12,7 @@ From the repo root, run `pnpm dev`, open `http://localhost:5173/` or `http://127
 1. The CV team creates a session and uploads batches using the [Swagger API contract](https://tracking-cv-api.youssefmansi2.workers.dev/docs).
 2. Enter that session's 32-character lowercase hex **Session ID**.
 3. Enter the shared **API key without Bearer**. Do not put it in source, screenshots, frontend build variables or URLs.
-4. Choose the GET interval (default one second; 250 ms–5 seconds) and click **Connect live API**.
+4. Choose the GET interval (250 ms, 500 ms, 1 s, 2 s, 5 s or **1 min**; default one second) and click **Connect live API**. The first request runs immediately, then the chosen delay follows each completed request. Playback remains source-paced. One-minute polling can miss frames if uploads overwrite the bounded server buffer between checks; a warning is shown for this option.
 5. Click **Stop receiving** to terminate the receiver worker. This never deletes the producer session. Switching to Local replay also terminates reception. Reconnecting starts a fresh observed-statistics accumulator and requires re-entering the key.
 
 The receiver calls only `GET https://tracking-cv-api.youssefmansi2.workers.dev/api/cv/sessions/{id}/frames?limit=300` with `Authorization: Bearer <key>`. Browser preflight OPTIONS is automatic. It never creates/deletes sessions or POSTs files/frames. The API URL is fixed in the client, not user-supplied, so a mistyped endpoint cannot receive the key. Redirect following is disabled, browser credentials/cookies are omitted, and responses bypass caches.

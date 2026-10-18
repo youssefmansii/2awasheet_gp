@@ -32,7 +32,7 @@ self.onmessage = (event: MessageEvent<{ sessionId: string; key: string; interval
 };
 async function poll({ sessionId, key, intervalMs }: { sessionId: string; key: string; intervalMs: number }) {
   const url = cvReadUrl(sessionId);
-  if (!/^[\x21-\x7e]{32,256}$/.test(key) || intervalMs < 250 || intervalMs > 5000) {
+  if (!/^[\x21-\x7e]{32,256}$/.test(key) || intervalMs < 250 || intervalMs > 60000) {
     send({ type: 'error', message: 'Enter a valid API key (without Bearer) and polling interval.' }); return;
   }
   const receiver = new CvReceiver(sessionId); let failures = 0;

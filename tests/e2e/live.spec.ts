@@ -8,6 +8,27 @@ const snapshot = (start: number, count: number, total = start + count) => ({ ses
   retainedFrames: count, lastSequence: 0, receivedAt: new Date().toISOString(), warnings: [],
   frames: Array.from({ length: count }, (_, i) => frame(start + i)) });
 
+test('one-minute GET interval connects immediately and keeps buffered playback running', async ({ page, context }) => {
+  let polls = 0;
+  await context.route(base + '/**', (route) => {
+    polls++;
+    return route.fulfill({ status: 200, contentType: 'application/json',
+      headers: { 'Access-Control-Allow-Origin': 'http://127.0.0.1:5173' }, body: JSON.stringify(snapshot(0, 10)) });
+  });
+  await page.goto('/'); await page.getByRole('button', { name: 'Live API', exact: true }).click();
+  const interval = page.getByLabel('GET interval');
+  await expect(interval.locator('option[value="60000"]')).toHaveCount(1);
+  await interval.selectOption({ label: '1 min' });
+  await page.getByLabel('Session ID', { exact: true }).fill(id);
+  await page.getByLabel('API key (without Bearer)').fill(key);
+  await page.getByRole('button', { name: 'Connect live API' }).click();
+  await expect(page.getByRole('status').first()).toContainText('10 frames played');
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await page.waitForTimeout(1100); // Must not silently fall back to the default one-second poll.
+  expect(polls).toBe(1);
+  await page.getByRole('button', { name: 'Stop receiving' }).click();
+});
+
 test('live API receives overlapping snapshots once and stops without deleting producer data', async ({ page, context }, testInfo) => {
   const methods: string[] = []; let polls = 0; let advance = false;
   await context.route(base + '/**', async (route) => {
