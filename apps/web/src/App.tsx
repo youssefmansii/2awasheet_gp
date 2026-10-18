@@ -26,6 +26,9 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { DropZone } from './components/DropZone';
 import { announceMatchFile } from './components/analytics/bridge'; // lets Advanced Analytics see the opened files
+import { HighlightControls } from './components/HighlightControls';
+import { advanceHighlightPlayback, buildHighlights, nearestHighlightTime } from './replay/highlights';
+import { LiveApi } from './components/LiveApi';
 import { AnalyticsPanel } from './components/AnalyticsPanel';
 import { WorkloadSettings } from './components/WorkloadSettings';
 import { EventTimeline, type EventFilter } from './components/EventTimeline';
@@ -80,6 +83,8 @@ function eventAtOrBefore(events: EventDataset['events'], timeMs: number) {
 }
 
 export function App() {
+  const [mode, setMode] = useState<'replay' | 'live'>('replay');
+  const [playbackView, setPlaybackView] = useState<'timeline' | 'highlights'>('timeline');
   const [data, setData] = useState<TrackingData | null>(null);
   const [metadata, setMetadata] = useState<MatchMetadata | null>(null);
   const [events, setEvents] = useState<EventDataset | null>(null);
@@ -118,6 +123,10 @@ export function App() {
   const pitchLength = pitch?.length ?? 105;
   const pitchWidth = pitch?.width ?? 68;
   const ranges = useMemo(() => playableRanges(metadata), [metadata]);
+  const trackingEventMismatch = Boolean(events?.gameId && data?.gameRefId && events.gameId !== data.gameRefId);
+  const highlightClips = useMemo(() => events && data && !trackingEventMismatch
+    ? buildHighlights(events.events, data.videoTimeMs.subarray(0, data.frameCount), ranges) : [],
+  [events, data, ranges, trackingEventMismatch]);
 
   const loadMetadata = useCallback(async (file: File) => {
     announceMatchFile('metadata', file);
@@ -150,6 +159,7 @@ export function App() {
     setError(undefined);
     setData(null);
     setPlaying(false);
+    setPlaybackView('timeline');
     const worker = new Worker(new URL('./workers/tracking.worker.ts', import.meta.url), { type: 'module' });
     workerRef.current = worker;
     worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
@@ -181,6 +191,9 @@ export function App() {
 
   const loadEvents = useCallback((file: File) => {
     eventWorkerRef.current?.terminate();
+    setPlaying(false);
+    setPlaybackView('timeline');
+    setEvents(null);
     setEventName(file.name);
     announceMatchFile('events', file);
     setEventError(undefined);
@@ -254,7 +267,9 @@ export function App() {
     if (!data?.frameCount) return;
     const first = data.videoTimeMs[0] ?? 0;
     const last = data.videoTimeMs[data.frameCount - 1] ?? first;
-    const playable = nearestPlayableTime(Math.max(first, Math.min(last, target)), ranges, ui.includeEverything);
+    const bounded = Math.max(first, Math.min(last, target));
+    const playable = playbackView === 'highlights' && highlightClips.length
+      ? nearestHighlightTime(highlightClips, bounded) : nearestPlayableTime(bounded, ranges, ui.includeEverything);
     const index = findFrameByTime(data.videoTimeMs.subarray(0, data.frameCount), playable);
     const nextIndex = Math.min(data.frameCount - 1, index + 1);
     const start = data.videoTimeMs[index] ?? playable;
@@ -263,7 +278,7 @@ export function App() {
     playbackRef.current = { index, nextIndex, alpha: end > start ? Math.max(0, Math.min(1, (playable - start) / (end - start))) : 0 };
     setDisplayIndex(index);
     setAnalyticsIndex(index);
-  }, [data, ranges, ui.includeEverything]);
+  }, [data, ranges, ui.includeEverything, playbackView, highlightClips]);
 
   useEffect(() => {
     if (!data?.frameCount) return;
@@ -275,15 +290,21 @@ export function App() {
       if (playing) {
         const lastTime = data.videoTimeMs[data.frameCount - 1] ?? 0;
         let target = playTimeRef.current + elapsed * ui.speed;
-        if (!ui.includeEverything && ranges.length > 0) {
+        let highlightEnded = false;
+        let highlightJumped = false;
+        if (playbackView === 'highlights') {
+          const next = advanceHighlightPlayback(highlightClips, playTimeRef.current, elapsed * ui.speed);
+          highlightJumped = Math.abs(next.timeMs - target) > 1;
+          target = next.timeMs; highlightEnded = next.ended;
+        } else if (!ui.includeEverything && ranges.length > 0) {
           for (let rangeIndex = 0; rangeIndex < ranges.length - 1; rangeIndex += 1) {
             const end = ranges[rangeIndex]?.[1] ?? 0;
             const nextStart = ranges[rangeIndex + 1]?.[0] ?? end;
             if (playTimeRef.current <= end && target > end) target = nextStart + (target - end);
           }
         }
-        if (target >= lastTime) {
-          target = lastTime;
+        if (target >= lastTime || highlightEnded) {
+          target = Math.min(target, lastTime);
           setPlaying(false);
         }
         playTimeRef.current = target;
@@ -293,11 +314,11 @@ export function App() {
         const start = times[index] ?? target;
         const end = times[nextIndex] ?? start;
         playbackRef.current = { index, nextIndex, alpha: end > start ? (target - start) / (end - start) : 0 };
-        if (now - lastUiUpdateRef.current >= 100) {
+        if (now - lastUiUpdateRef.current >= 100 || highlightJumped || highlightEnded) {
           lastUiUpdateRef.current = now;
           setDisplayIndex(index);
         }
-        if (now - lastAnalyticsUpdateRef.current >= 1000) {
+        if (now - lastAnalyticsUpdateRef.current >= 1000 || highlightJumped || highlightEnded) {
           lastAnalyticsUpdateRef.current = now;
           setAnalyticsIndex(index);
         }
@@ -306,7 +327,7 @@ export function App() {
     };
     animation = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(animation);
-  }, [data, playing, ranges, ui.includeEverything, ui.speed]);
+  }, [data, playing, ranges, ui.includeEverything, ui.speed, playbackView, highlightClips]);
 
   const currentPeriod = data?.period[displayIndex] ?? 0;
   const currentClock = data?.periodGameClockTime[displayIndex] ?? 0;
@@ -349,7 +370,7 @@ export function App() {
             </div>
             <h1 className="mt-1 truncate text-lg font-semibold tracking-tight text-white sm:text-xl">Match Replay</h1>
           </div>
-          {data ? (
+          {data && mode === 'replay' ? (
             <div className="flex items-center gap-4 rounded-2xl border border-line bg-panel px-4 py-2.5 shadow-panel sm:gap-7 sm:px-6" aria-live="polite">
                 <div className="hidden text-right sm:block">
                   <div className="text-sm font-bold tracking-wide">{homeName} <span className="mx-2 font-normal text-muted">{verifiedLiveScore ? `${verifiedLiveScore[0]}–${verifiedLiveScore[1]}` : 'vs'}</span> {awayName}</div>
@@ -361,7 +382,10 @@ export function App() {
         </div>
       </header>
 
-      <main className="mx-auto grid max-w-[1480px] gap-5 px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:px-8 lg:py-8">
+      <nav aria-label="Tracking mode" className="mx-auto flex max-w-[1480px] gap-3 px-4 pt-5 sm:px-6 lg:px-8">
+        {(['replay', 'live'] as const).map((option) => <button key={option} type="button" aria-pressed={mode === option} onClick={() => { setPlaying(false); setMode(option); }} className={`min-h-11 rounded-xl border px-4 text-sm font-semibold ${mode === option ? 'border-lime bg-lime/10 text-lime' : 'border-line text-muted'}`}>{option === 'replay' ? 'Local replay' : 'Live API'}</button>)}
+      </nav>
+      {mode === 'live' ? <LiveApi metadata={metadata} /> : <main className="mx-auto grid max-w-[1480px] gap-5 px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:px-8 lg:py-8">
         <section className="min-w-0 space-y-4" aria-label="Replay viewer">
           {!data ? (
             <div className="overflow-hidden rounded-3xl border border-line bg-panel shadow-panel">
@@ -414,10 +438,24 @@ export function App() {
                 />
               </div>
               <div className="rounded-3xl border border-line bg-panel p-4 shadow-panel sm:p-5">
+                <div className="mb-4 flex flex-wrap gap-2" role="group" aria-label="Local playback view">
+                  {(['timeline', 'highlights'] as const).map((view) => <button key={view} type="button"
+                    aria-pressed={playbackView === view} onClick={() => {
+                      setPlaying(false); setPlaybackView(view);
+                      if (view === 'highlights' && highlightClips.length) seekToTime(nearestHighlightTime(highlightClips, playTimeRef.current));
+                    }} className={`min-h-11 rounded-xl border px-4 text-sm font-semibold ${playbackView === view ? 'border-lime bg-lime/10 text-lime' : 'border-line text-muted hover:text-white'}`}>
+                    {view === 'timeline' ? 'Timeline' : 'Highlights'}
+                  </button>)}
+                </div>
                 <div className="mb-3 flex items-center justify-between gap-4 text-xs text-muted">
                   <span>Frame <strong className="font-mono text-slate-200">{(displayIndex + 1).toLocaleString()}</strong> / {data.frameCount.toLocaleString()}</span>
-                  <span className="font-mono tabular-nums">Source #{data.frameNum[displayIndex]}</span>
+                  <span className="font-mono tabular-nums" data-testid="local-source-frame">Source #{data.frameNum[displayIndex]}</span>
                 </div>
+                {playbackView === 'highlights' ? <HighlightControls clips={highlightClips} currentTimeMs={currentTimeMs}
+                  playing={playing} onSeek={seekToTime} onPlayingChange={setPlaying}
+                  emptyReason={eventLoading ? 'Loading match events…' : !events ? 'Load a matching Match events JSON file to generate automatic highlights.'
+                    : trackingEventMismatch ? 'The events match ID does not match the tracking file. Load matching events to use Highlights.'
+                      : 'No goals, shots, cards or substitutions have available tracking in this recording.'} /> : <>
                 <label className="sr-only" htmlFor="timeline">Seek through match</label>
                 <input id="timeline" className="block h-11 w-full cursor-pointer" type="range" min={0} max={Math.max(0, data.frameCount - 1)} value={displayIndex} onChange={(event) => { setPlaying(false); const index = Number(event.target.value); seekToTime(data.videoTimeMs[index] ?? 0); }} />
                 <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
@@ -429,6 +467,7 @@ export function App() {
                   <IconButton label="Next frame" onClick={() => seekToTime(data.videoTimeMs[Math.min(data.frameCount - 1, playbackRef.current.index + 1)] ?? 0)}><ChevronRight aria-hidden="true" className="h-5 w-5" /></IconButton>
                   <IconButton label="Jump forward 5 seconds" onClick={() => seekToTime(playTimeRef.current + 5000)}><SkipForward aria-hidden="true" className="h-5 w-5" /></IconButton>
                 </div>
+                </>}
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
                   <div className="flex items-center gap-2">
                     <Gauge aria-hidden="true" className="h-4 w-4 text-muted" />
@@ -437,12 +476,12 @@ export function App() {
                       {SPEEDS.map((speed) => <option key={speed} value={speed}>{speed}×</option>)}
                     </select>
                   </div>
-                  <div className="flex gap-2">
+                  {playbackView === 'timeline' ? <div className="flex gap-2">
                     <button type="button" onClick={() => seekToTime((metadata?.startPeriod1 ?? 0) * 1000)} className="min-h-11 rounded-xl border border-line px-4 text-sm font-semibold text-slate-200 hover:bg-white/[0.05]">1st half</button>
                     <button type="button" onClick={() => seekToTime((metadata?.startPeriod2 ?? 0) * 1000)} className="min-h-11 rounded-xl border border-line px-4 text-sm font-semibold text-slate-200 hover:bg-white/[0.05]">2nd half</button>
-                  </div>
+                  </div> : null}
                 </div>
-                {events ? (
+                {events && playbackView === 'timeline' ? (
                   <EventTimeline
                     events={events.events}
                     currentTimeMs={currentTimeMs}
@@ -540,7 +579,7 @@ export function App() {
           </div>
           <WorkloadSettings config={workloadConfig} available={Boolean(data)} busy={workloadLoading} progress={workloadProgress} frames={workloadFrames} error={workloadError} onApply={recomputeWorkload} />
         </aside>
-      </main>
+      </main>}
     </div>
   );
 }

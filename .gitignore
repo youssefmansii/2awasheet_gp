@@ -19,3 +19,13 @@ tracking/
 data/
 performance/generated-*.jsonl
 *.tracking.json
+
+# Compressed tracking uploads must never be committed.
+*.jsonl.gz
+*.tracking.gz
+
+# Cloudflare local state and secrets (never publish captures or keys).
+.wrangler/
+.dev.vars
+.dev.vars.*
+apps/cloudflare/public/

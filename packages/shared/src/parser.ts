@@ -77,7 +77,7 @@ export function parseTrackingLine(line: string): LineResult {
   } catch (error) {
     return { kind: 'malformed', error: error instanceof Error ? error.message : 'Invalid JSON' };
   }
-  if (!Number.isFinite(input.frameNum) || !Number.isFinite(input.videoTimeMs)) {
+  if (!input || typeof input !== 'object' || !Number.isFinite(input.frameNum) || !Number.isFinite(input.videoTimeMs)) {
     return { kind: 'malformed', error: 'Frame is missing frameNum or videoTimeMs' };
   }
 
@@ -128,11 +128,12 @@ export function parseTrackingLine(line: string): LineResult {
 
 export function packFrames(
   frames: ParsedFrame[],
-  stats: { malformedLines: number; blankLines: number; overflowPlayers: number }
+  stats: { malformedLines: number; blankLines: number; overflowPlayers: number },
+  workloads?: TrackingData['workloads']
 ): TrackingData {
   const count = frames.length;
   const workload = new WorkloadAccumulator();
-  frames.forEach((frame) => workload.add(frame));
+  if (!workloads) frames.forEach((frame) => workload.add(frame));
   const data: TrackingData = {
     frameCount: count,
     malformedLines: stats.malformedLines,
@@ -153,7 +154,7 @@ export function packFrames(
     smoothedBall: new Float32Array(count * BALL_FLOATS),
     rawBallVisible: new Uint8Array(count),
     smoothedBallVisible: new Uint8Array(count),
-    workloads: workload.finish()
+    workloads: workloads ?? workload.finish()
   };
 
   frames.forEach((frame, index) => {
