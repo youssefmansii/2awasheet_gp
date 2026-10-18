@@ -19,3 +19,7 @@ tracking/
 data/
 performance/generated-*.jsonl
 *.tracking.json
+
+# Compressed tracking uploads must never be committed.
+*.jsonl.gz
+*.tracking.gz
