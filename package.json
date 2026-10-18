@@ -14,7 +14,7 @@
     "test:api": "node scripts/smoke-cv-api.mjs",
     "dev:cloudflare": "pnpm --filter tracking-cv-cloudflare dev",
     "build:cloudflare": "pnpm --filter tracking-cv-cloudflare build",
-    "deploy:cloudflare": "pnpm --filter tracking-cv-cloudflare deploy",
+    "deploy:cloudflare": "pnpm --filter tracking-cv-cloudflare run deploy",
     "test:cloudflare": "node scripts/smoke-cloudflare.mjs",
     "test:performance": "node scripts/run-performance.mjs",
     "test:e2e": "node scripts/run-e2e.mjs"
