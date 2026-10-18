@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { DropZone } from './components/DropZone';
+import { announceMatchFile } from './components/analytics/bridge'; // lets Advanced Analytics see the opened files
 import { AnalyticsPanel } from './components/AnalyticsPanel';
 import { WorkloadSettings } from './components/WorkloadSettings';
 import { EventTimeline, type EventFilter } from './components/EventTimeline';
@@ -119,6 +120,7 @@ export function App() {
   const ranges = useMemo(() => playableRanges(metadata), [metadata]);
 
   const loadMetadata = useCallback(async (file: File) => {
+    announceMatchFile('metadata', file);
     setMetadataName(file.name);
     setMetadataError(undefined);
     try {
@@ -140,6 +142,7 @@ export function App() {
     workerRef.current?.terminate();
     workloadWorkerRef.current?.terminate();
     trackingFileRef.current = file;
+    announceMatchFile('tracking', file);
     setTrackingName(file.name);
     setLoading(true);
     setProgress(0);
@@ -179,6 +182,7 @@ export function App() {
   const loadEvents = useCallback((file: File) => {
     eventWorkerRef.current?.terminate();
     setEventName(file.name);
+    announceMatchFile('events', file);
     setEventError(undefined);
     setEventLoading(true);
     setEventProgress(0);
