@@ -90,6 +90,15 @@ try {
   const created = await fetch(base + '/api/cv/sessions', { method: 'POST', headers });
   assert.equal(created.status, 201); const { sessionId } = await created.json();
   const path = `/api/cv/sessions/${sessionId}`;
+  const frontend = 'http://localhost:5173';
+  const corsOptions = await fetch(base + path + '/frames', { method: 'OPTIONS', headers: {
+    Origin: frontend, 'Access-Control-Request-Method': 'GET', 'Access-Control-Request-Headers': 'authorization'
+  } });
+  assert.equal(corsOptions.status, 204);
+  assert.equal(corsOptions.headers.get('Access-Control-Allow-Origin'), frontend);
+  const corsRead = await fetch(base + path + '/frames?limit=90', { headers: { ...headers, Origin: frontend } });
+  assert.equal(corsRead.status, 200); assert.equal(corsRead.headers.get('Access-Control-Allow-Origin'), frontend);
+  assert.equal((await fetch(base + '/api/cv/sessions', { method: 'POST', headers: { ...headers, Origin: frontend } })).status, 403);
   const body = { sequence: 0, frames: Array.from({ length: 5 }, (_, i) => frame(i)) };
   const accepted = await post(path + '/frames', body); assert.equal(accepted.status, 200);
   assert.equal((await accepted.json()).acceptedFrames, 5);

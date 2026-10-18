@@ -17,7 +17,7 @@ const ok = (name: string, description: string, example: unknown) => ({ descripti
 const errors: Record<number, [string, string]> = {
   400: ['INVALID_JSON', 'Malformed UTF-8 JSON, invalid limit or unexpected session-creation body.'],
   401: ['UNAUTHORIZED', 'A valid Bearer API key is required.'],
-  403: ['ORIGIN_DENIED', 'Cross-origin browser access is not enabled.'],
+  403: ['ORIGIN_DENIED', 'This browser origin or method is not enabled. Only explicitly configured frontend GET reads are allowed cross-origin.'],
   404: ['NOT_FOUND', 'Unknown or expired session/endpoint. Create a new session if needed.'],
   408: ['REQUEST_TIMEOUT', 'Upload body timed out after 10 seconds.'],
   409: ['SEQUENCE_CONFLICT', 'Sequence already accepted with different content.'],

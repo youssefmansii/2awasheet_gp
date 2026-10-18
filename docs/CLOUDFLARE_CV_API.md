@@ -2,7 +2,7 @@
 
 ## Scope and architecture
 
-The backend-only Cloudflare deployment is an alternative to the Node/Render server. It does not deploy the frontend, run the CV model, calculate workload or connect the dashboard to this API. Private tracking files and metadata remain out of Git and the deployment bundle.
+The backend-only Cloudflare deployment is an alternative to the Node/Render server. It does not deploy the frontend, run the CV model or calculate workload. The frontend now has a read-only Live API viewer described in [FRONTEND_LIVE_API.md](FRONTEND_LIVE_API.md); workload is calculated in its browser worker from received frames. Private tracking files and metadata remain out of Git and the deployment bundle.
 
 A Worker forwards protected HTTP requests to one SQLite-backed Durable Object (`CvCoordinator`, binding `CV_COORDINATOR`). The fixed coordinator name is `trusted-team-v1`: four sessions for one trusted team, not a multi-tenant service. Global request/auth limits, session counts and sequence state are coordinated across Worker locations. A regular Worker global variable would not provide this consistency.
 
@@ -21,7 +21,7 @@ Open [Swagger UI](https://tracking-cv-api.youssefmansi2.workers.dev/docs). The [
 3. Copy the returned session ID into the frame endpoints. Upload a batch with sequence zero, then read latest/recent frames. Use a new increasing sequence for each new batch; reuse the same sequence/content for retries.
 4. Delete your test session when finished, and **Logout** in the authorization dialog or close/reload the page.
 
-Try it out performs real operations against the same API origin, including deletion. Swagger request examples/cURL snippets can display the key you enter: do not screenshot or share those authenticated snippets. Authorization is held only in page memory and not persisted across reloads. The API key, shared-key access model, CORS and frame validation remain unchanged.
+Try it out performs real operations against the same API origin, including deletion. Swagger request examples/cURL snippets can display the key you enter: do not screenshot or share those authenticated snippets. Authorization is held only in page memory and not persisted across reloads. The API key, shared-key access model and frame validation remain unchanged. Explicit frontend origins can now GET session frames/latest; cross-origin writes remain blocked.
 
 Swagger UI 5.33.3 assets are pinned, copied locally by the package's dev/build/deploy commands, and served from `/docs-assets/`; no CDN, external validator, URL-config overrides or telemetry scripts are used by the page. The package's install scripts, including its Scarf dependency's install-time telemetry, remain disabled. The docs-only CSP allows same-origin scripts/connections and inline styles required by Swagger; API JSON retains its strict `default-src 'none'` policy. Generated `apps/cloudflare/public/` is ignored by Git. Its contents are a build artifact, not a place to add match files. Only three known asset paths are served publicly.
 

@@ -6,8 +6,9 @@ import { validateCvBatch } from '../../api/src/cv-validation';
 import { acceptBatch, metadata, newSession, type Session } from './session';
 import { json, failure, readJson, readBytes } from './http';
 import { documentationResponse } from './docs';
+import { allowedReadOrigin, preflight, withReadCors } from './cors';
 
-interface Env { CV_API_KEY: string; CV_COORDINATOR: DurableObjectNamespace<CvCoordinator>; DOCS_ASSETS: Fetcher }
+interface Env { CV_API_KEY: string; CV_ALLOWED_ORIGINS?: string; CV_COORDINATOR: DurableObjectNamespace<CvCoordinator>; DOCS_ASSETS: Fetcher }
 type SessionRow = { id: string; data: string; expires: number };
 type RateRow = { start: number; requests: number; failures: number };
 
@@ -58,7 +59,9 @@ export class CvCoordinator extends DurableObject<Env> {
     }
     const url = new URL(request.url);
     const origin = request.headers.get('Origin');
-    if (origin && origin !== url.origin) throw new CvError(403, 'ORIGIN_DENIED', 'Cross-origin browser access is not enabled.');
+    if (origin && origin !== url.origin && !allowedReadOrigin(request, this.env.CV_ALLOWED_ORIGINS)) {
+      throw new CvError(403, 'ORIGIN_DENIED', 'This origin or method is not enabled for browser access.');
+    }
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -124,7 +127,10 @@ export class CvCoordinator extends DurableObject<Env> {
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    const origin = allowedReadOrigin(request, env.CV_ALLOWED_ORIGINS);
     try {
+      const options = preflight(request, env.CV_ALLOWED_ORIGINS);
+      if (options) return options;
       const path = new URL(request.url).pathname;
       if (request.method === 'GET') {
         const docs = documentationResponse(path);
@@ -141,7 +147,8 @@ export default {
         cvServerConfig({ CV_API_KEY: env.CV_API_KEY });
         return json(200, { status: 'ok', service: 'cv-diagnostic-api', storage: 'durable-sqlite' });
       }
-      return await env.CV_COORDINATOR.getByName('trusted-team-v1').fetch(request);
-    } catch (error) { return failure(error); }
+      const response = await env.CV_COORDINATOR.getByName('trusted-team-v1').fetch(request);
+      return origin ? withReadCors(response, origin) : response;
+    } catch (error) { const response = failure(error); return origin ? withReadCors(response, origin) : response; }
   }
 } satisfies ExportedHandler<Env>;

@@ -67,6 +67,9 @@ export class WorkloadAccumulator {
     this.histogramBins = Math.ceil(this.config.maxValidSpeedMps / this.config.histogramStepMps) + 1;
   }
 
+  /** Preserve observed totals, but never bridge motion across a known missing-data interval. */
+  breakContinuity(): void { this.previous.clear(); }
+
   private percentile95(workload: MutableWorkload): number {
     const count = workload.speedHistogram.reduce((sum, value) => sum + value, 0);
     if (!count) return 0;

@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { DropZone } from './components/DropZone';
+import { LiveApi } from './components/LiveApi';
 import { AnalyticsPanel } from './components/AnalyticsPanel';
 import { WorkloadSettings } from './components/WorkloadSettings';
 import { EventTimeline, type EventFilter } from './components/EventTimeline';
@@ -79,6 +80,7 @@ function eventAtOrBefore(events: EventDataset['events'], timeMs: number) {
 }
 
 export function App() {
+  const [mode, setMode] = useState<'replay' | 'live'>('replay');
   const [data, setData] = useState<TrackingData | null>(null);
   const [metadata, setMetadata] = useState<MatchMetadata | null>(null);
   const [events, setEvents] = useState<EventDataset | null>(null);
@@ -345,7 +347,7 @@ export function App() {
             </div>
             <h1 className="mt-1 truncate text-lg font-semibold tracking-tight text-white sm:text-xl">Match Replay</h1>
           </div>
-          {data ? (
+          {data && mode === 'replay' ? (
             <div className="flex items-center gap-4 rounded-2xl border border-line bg-panel px-4 py-2.5 shadow-panel sm:gap-7 sm:px-6" aria-live="polite">
                 <div className="hidden text-right sm:block">
                   <div className="text-sm font-bold tracking-wide">{homeName} <span className="mx-2 font-normal text-muted">{verifiedLiveScore ? `${verifiedLiveScore[0]}–${verifiedLiveScore[1]}` : 'vs'}</span> {awayName}</div>
@@ -357,7 +359,10 @@ export function App() {
         </div>
       </header>
 
-      <main className="mx-auto grid max-w-[1480px] gap-5 px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:px-8 lg:py-8">
+      <nav aria-label="Tracking mode" className="mx-auto flex max-w-[1480px] gap-3 px-4 pt-5 sm:px-6 lg:px-8">
+        {(['replay', 'live'] as const).map((option) => <button key={option} type="button" aria-pressed={mode === option} onClick={() => { setPlaying(false); setMode(option); }} className={`min-h-11 rounded-xl border px-4 text-sm font-semibold ${mode === option ? 'border-lime bg-lime/10 text-lime' : 'border-line text-muted'}`}>{option === 'replay' ? 'Local replay' : 'Live API'}</button>)}
+      </nav>
+      {mode === 'live' ? <LiveApi metadata={metadata} /> : <main className="mx-auto grid max-w-[1480px] gap-5 px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:px-8 lg:py-8">
         <section className="min-w-0 space-y-4" aria-label="Replay viewer">
           {!data ? (
             <div className="overflow-hidden rounded-3xl border border-line bg-panel shadow-panel">
@@ -536,7 +541,7 @@ export function App() {
           </div>
           <WorkloadSettings config={workloadConfig} available={Boolean(data)} busy={workloadLoading} progress={workloadProgress} frames={workloadFrames} error={workloadError} onApply={recomputeWorkload} />
         </aside>
-      </main>
+      </main>}
     </div>
   );
 }
