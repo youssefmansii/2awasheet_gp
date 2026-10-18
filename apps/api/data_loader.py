@@ -44,7 +44,7 @@ try:  # orjson is ~3x faster than json; it is optional.
 except ImportError:  # pragma: no cover
     _loads = json.loads
 
-LOADER_VERSION = "1.2"
+LOADER_VERSION = "1.3"  # invalidate cached matches that dropped a BOM-prefixed first frame
 
 # ---------------------------------------------------------------------------
 # Standard pitch + grid (spec: 105 x 68 m, 50 x 32 cells)
@@ -306,7 +306,9 @@ def _parse_tracking(path: Path, source: str) -> dict:
 
     with _open_binary(path) as f:
         for line in f:
-            line = line.strip()
+            # Windows-created JSONL may start with a UTF-8 BOM; orjson rejects
+            # it while the stdlib decoder accepts it. Preserve the first frame.
+            line = line.strip().removeprefix(b'\xef\xbb\xbf')
             if not line:
                 continue
             try:
