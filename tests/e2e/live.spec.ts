@@ -15,7 +15,7 @@ test('live API receives overlapping snapshots once and stops without deleting pr
     if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: {
       'Access-Control-Allow-Origin': 'http://127.0.0.1:5173', 'Access-Control-Allow-Headers': 'Authorization', 'Access-Control-Allow-Methods': 'GET'
     } });
-    expect(req.method()).toBe('GET'); expect(req.url()).toBe(base + '/api/cv/sessions/' + id + '/frames?limit=90');
+    expect(req.method()).toBe('GET'); expect(req.url()).toBe(base + '/api/cv/sessions/' + id + '/frames?limit=300');
     expect(req.headers().authorization).toBe('Bearer ' + key); polls++;
     await route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': 'http://127.0.0.1:5173' },
       body: JSON.stringify(advance ? snapshot(5, 10) : snapshot(0, 10)) });
@@ -78,5 +78,51 @@ test('live API reports late join and absent clocks instead of complete match wor
   await expect(page.getByText(/Partial history: earlier frames/)).toBeVisible();
   await expect(page.getByText(/Workload.trend display requires/)).toBeVisible();
   await expect(page.getByRole('table', { name: /Live workload/ })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Stop receiving' }).click();
+});
+
+test('plays a 300-frame batch over ten seconds, pauses, waits, and resumes with the next batch', async ({ page, context }, testInfo) => {
+  const errors: string[] = []; page.on('pageerror', (error) => errors.push(error.message));
+  let nextBatch = false;
+  await context.route(base + '/**', (route) => {
+    const input = nextBatch ? snapshot(240, 90, 330) : snapshot(0, 300);
+    input.frames = input.frames.map((f) => ({ ...f, videoTimeMs: f.frameNum * 1000 / 30,
+      periodGameClockTime: f.frameNum / 30, homePlayers: [{ ...f.homePlayers[0]!, x: f.frameNum / 10 }] }));
+    return route.fulfill({ status: 200, contentType: 'application/json',
+      headers: { 'Access-Control-Allow-Origin': 'http://127.0.0.1:5173' }, body: JSON.stringify(input) });
+  });
+  await page.goto('/'); await page.getByRole('button', { name: 'Live API', exact: true }).click();
+  await page.getByLabel('Session ID', { exact: true }).fill(id);
+  await page.getByLabel('API key (without Bearer)').fill(key);
+  await page.getByLabel('GET interval').selectOption('250');
+  await page.getByRole('button', { name: 'Connect live API' }).click();
+  const status = page.getByRole('status').first();
+  await expect(status).toContainText('300 frames observed');
+  const sourceFrame = page.getByTestId('live-playback-frame');
+  await expect(sourceFrame).toBeVisible();
+  const first = Number((await sourceFrame.textContent())!.split('#')[1]);
+  expect(first).toBeLessThan(60); // Receipt must not jump directly to #299.
+  const table = page.getByRole('table', { name: /Live workload and output indicators/ });
+  await expect(table).toBeVisible();
+  const distance = table.locator('tbody tr').first().locator('td').nth(2);
+  expect(parseFloat((await distance.textContent())!)).toBeLessThan(0.03);
+  await page.getByRole('button', { name: 'Pause playback', exact: true }).click();
+  await expect(status).toContainText('Paused');
+  const pausedFrame = await sourceFrame.textContent();
+  await page.waitForTimeout(400);
+  expect(await sourceFrame.textContent()).toBe(pausedFrame);
+  await page.getByRole('button', { name: 'Resume playback', exact: true }).click();
+  await expect(status).toContainText('300 frames played', { timeout: 15000 });
+  await expect(status).toContainText('Waiting for next batch');
+  await expect(sourceFrame).toContainText('#299');
+  await page.waitForTimeout(300);
+  await expect(sourceFrame).toContainText('#299');
+  nextBatch = true;
+  await expect(status).toContainText('330 frames played');
+  await expect(sourceFrame).toContainText('#329');
+  await expect(table).toBeVisible();
+  await expect(distance).toContainText('0.03 km');
+  expect(errors).toEqual([]);
+  await page.screenshot({ path: testInfo.outputPath('buffered-playback.png'), fullPage: true });
   await page.getByRole('button', { name: 'Stop receiving' }).click();
 });

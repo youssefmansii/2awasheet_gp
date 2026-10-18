@@ -10,7 +10,7 @@ const snapshot = (start: number, count: number, receivedFrames = start + count) 
 });
 describe('CV live receiver', () => {
   it('builds only the fixed API read URL and rejects invalid session IDs', () => {
-    expect(cvReadUrl(id)).toBe(`https://tracking-cv-api.youssefmansi2.workers.dev/api/cv/sessions/${id}/frames?limit=90`);
+    expect(cvReadUrl(id)).toBe(`https://tracking-cv-api.youssefmansi2.workers.dev/api/cv/sessions/${id}/frames?limit=300`);
     expect(() => cvReadUrl('../secret')).toThrow();
   });
   it('waits for empty sessions and deduplicates overlapping polling snapshots', () => {
@@ -20,22 +20,25 @@ describe('CV live receiver', () => {
     expect(r.consume(snapshot(0, 10)).data).toBeUndefined();
     const result = r.consume(snapshot(5, 10));
     expect(result.processedFrames).toBe(15);
-    expect(result.data!.workloads[0]!.distanceM).toBeCloseTo(7);
-    expect(result.data!.frameNum.at(-1)).toBe(14);
+    r.advance(0); const played = r.advance(1500);
+    expect(played.workloads![0]!.distanceM).toBeCloseTo(7);
+    expect(played.data!.frameNum.at(-1)).toBe(14);
   });
   it('reports late-join and missed-buffer history without bridging missing frames', () => {
     const r = new CvReceiver(id);
     expect(r.consume(snapshot(100, 5)).missingFrames).toBe(100);
     const result = r.consume(snapshot(106, 5));
     expect(result.missingFrames).toBe(101);
-    expect(result.data!.workloads[0]!.distanceM).toBeCloseTo(4);
+    r.advance(0);
+    expect(r.advance(1500).workloads![0]!.distanceM).toBeCloseTo(4);
   });
   it('keeps only a bounded pitch window while accumulating observed workload', () => {
     const r = new CvReceiver(id);
     r.consume(snapshot(0, 90)); const result = r.consume(snapshot(90, 90));
-    expect(result.data!.frameCount).toBe(90);
+    r.advance(0); const played = r.advance(18000);
+    expect(played.data!.frameCount).toBe(90);
     expect(result.processedFrames).toBe(180);
-    expect(result.data!.workloads[0]!.distanceM).toBeCloseTo(89.5);
+    expect(played.workloads![0]!.distanceM).toBeCloseTo(89.5);
   });
   it('rejects malformed or wrong-session data and never accepts unknown jerseys', () => {
     const r = new CvReceiver(id);
@@ -53,6 +56,7 @@ describe('CV live receiver', () => {
   it('does not invent match clocks when the provider omits them', () => {
     const r = new CvReceiver(id); const input = snapshot(0, 1);
     const withoutClock: Record<string, unknown> = { ...input.frames[0]! }; delete withoutClock.periodGameClockTime;
-    expect(r.consume({ ...input, frames: [withoutClock] }).clockComplete).toBe(false);
+    r.consume({ ...input, frames: [withoutClock] });
+    expect(r.advance(0).clockComplete).toBe(false);
   });
 });

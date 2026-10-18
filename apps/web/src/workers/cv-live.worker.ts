@@ -5,6 +5,7 @@ export type CvWorkerMessage = { type: 'update'; update: CvViewUpdate; state: str
   | { type: 'status'; state: string; message: string } | { type: 'error'; message: string };
 const send = (message: CvWorkerMessage) => self.postMessage(message);
 let started = false;
+let paused = false;
 const friendly: Record<number, string> = {
   401: 'API key rejected. Paste the key value without the Bearer prefix.',
   403: 'This frontend origin is not allowed by the API. Ask the owner to configure its exact origin.',
@@ -24,9 +25,10 @@ async function readSnapshot(response: Response): Promise<unknown> {
     return JSON.parse(text + decoder.decode());
   } finally { void reader.cancel().catch(() => undefined); }
 }
-self.onmessage = (event: MessageEvent<{ sessionId: string; key: string; intervalMs: number }>) => {
+self.onmessage = (event: MessageEvent<{ sessionId: string; key: string; intervalMs: number } | { type: 'pause'; paused: boolean }>) => {
+  if ('type' in event.data && event.data.type === 'pause') { paused = event.data.paused; return; }
   if (started) return; started = true;
-  void poll(event.data).catch(() => send({ type: 'error', message: 'Live receiver failed. Reconnect to try again.' }));
+  if ('sessionId' in event.data) void poll(event.data).catch(() => send({ type: 'error', message: 'Live receiver failed. Reconnect to try again.' }));
 };
 async function poll({ sessionId, key, intervalMs }: { sessionId: string; key: string; intervalMs: number }) {
   const url = cvReadUrl(sessionId);
@@ -34,6 +36,17 @@ async function poll({ sessionId, key, intervalMs }: { sessionId: string; key: st
     send({ type: 'error', message: 'Enter a valid API key (without Bearer) and polling interval.' }); return;
   }
   const receiver = new CvReceiver(sessionId); let failures = 0;
+  const playbackState = (update: CvViewUpdate) => paused ? 'Paused' : update.bufferedFrames ? 'Playing buffered frames' : 'Waiting for next batch';
+  let playbackNow = 0; let lastTick = performance.now();
+  const timer = setInterval(() => {
+    const now = performance.now();
+    if (!paused) playbackNow += Math.min(100, now - lastTick);
+    lastTick = now;
+    if (paused) return;
+    const update = receiver.advance(playbackNow);
+    if (update.data) send({ type: 'update', update, state: playbackState(update) });
+  }, 16);
+  try {
   while (true) {
     let delay = intervalMs;
     try {
@@ -46,10 +59,10 @@ async function poll({ sessionId, key, intervalMs }: { sessionId: string; key: st
       } else {
         let update: CvViewUpdate;
         try { update = receiver.consume(await readSnapshot(response)); }
-        catch { send({ type: 'error', message: 'Invalid API tracking response. Check the CV output and session, then reconnect.' }); return; }
+        catch (error) { send({ type: 'error', message: error instanceof Error && error.message.startsWith('Playback buffer is full.')
+          ? error.message : 'Invalid API tracking response. Check the CV output and session, then reconnect.' }); return; }
         failures = 0;
-        const stale = update.lastReceivedAt === null || Date.now() - Date.parse(update.lastReceivedAt) > 5000;
-        send({ type: 'update', update, state: stale ? 'Waiting for new frames' : 'Connected' });
+        send({ type: 'update', update, state: playbackState(update) });
       }
     } catch {
       delay = Math.min(30000, 1000 * 2 ** Math.min(++failures, 5));
@@ -57,4 +70,5 @@ async function poll({ sessionId, key, intervalMs }: { sessionId: string; key: st
     }
     await new Promise((resolve) => setTimeout(resolve, delay));
   }
+  } finally { clearInterval(timer); }
 }
