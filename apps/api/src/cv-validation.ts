@@ -49,7 +49,7 @@ export function validateCvBatch(value: unknown): CvBatch {
   validateJsonTree(value);
   if (!object(value) || !Number.isSafeInteger(value.sequence) || (value.sequence as number) < 0
     || !Array.isArray(value.frames) || value.frames.length < 1 || value.frames.length > CV_LIMITS.batchFrames) {
-    throw new CvError(422, 'INVALID_BATCH', 'Provide a non-negative integer sequence and 1–120 frames.');
+    throw new CvError(422, 'INVALID_BATCH', 'Provide a non-negative integer sequence and 1–300 frames.');
   }
   let previousTime = -Infinity; let previousFrame = -1;
   for (const [index, frame] of value.frames.entries()) {
