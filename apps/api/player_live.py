@@ -124,8 +124,10 @@ class PhysicalIndex:
         need = int(round(RUN_MIN_S * self.fps))
         for name, thr in (("hsr", HSR_SPEED), ("spr", SPRINT_SPEED)):
             fast = s >= thr
-            edges = np.diff(np.concatenate(([0], fast.astype(np.int8), [0])))
-            starts, ends = np.flatnonzero(edges == 1), np.flatnonzero(edges == -1)
+            # A period boundary ends a run even if both adjacent speeds are high.
+            same_period = self.md.period[1:] == self.md.period[:-1]
+            starts = np.flatnonzero(fast & ~np.concatenate(([False], fast[:-1] & same_period)))
+            ends = np.flatnonzero(fast & ~np.concatenate((fast[1:] & same_period, [False]))) + 1
             rows = [(int(a), int(b), float(s[a:b].max()), float(s[a:b].sum() / self.fps)) for a, b in zip(starts, ends)
                     if b - a >= need and self.md.period[a] == self.md.period[b - 1]]
             out[name] = np.array(rows, dtype=float).reshape(-1, 4)
@@ -142,8 +144,9 @@ class PhysicalIndex:
         pres = self._blocks["pres"][k] + self.present[a:b].sum(axis=0) / self.fps
         mt = self.M[a:b]
         vmax = np.maximum(self._vmax[k], mt.max(axis=0) if len(mt) else 0.0)
-        n_spr = np.array([int((r["spr"][:, 1] <= idx + 1).sum()) for r in self.runs])
-        n_hsr = np.array([int((r["hsr"][:, 1] <= idx + 1).sum()) for r in self.runs])
+        need = int(round(RUN_MIN_S * self.fps))
+        n_spr = np.array([int((r["spr"][:, 0] + need <= idx + 1).sum()) for r in self.runs])
+        n_hsr = np.array([int((r["hsr"][:, 0] + need <= idx + 1).sum()) for r in self.runs])
         return {"distance_m": dist, "hsr_m": hsr, "sprint_m": spr, "seconds": pres, "top_speed": vmax, "sprints": n_spr, "hsr_runs": n_hsr}
 
     def cumulative_at(self, slot: int, idxs: np.ndarray) -> dict:
@@ -203,7 +206,7 @@ class LivePlayers:
     def _build_actions(self) -> pd.DataFrame:
         m, ev = self.m, self.m.events
         cols = ["eidx", "slot", "side", "kind", "fi", "frame_num", "period", "minute", "ok", "x", "y", "ex", "ey", "detail",
-                "recv", "key", "assist", "xa", "xg", "shot_cat", "lines", "role", "pressured", "t_ev"]
+                "recv", "key", "assist", "xa", "xg", "shot_cat", "lines", "role", "pressured", "t_ev", "key_fi"]
         if not len(ev):
             return pd.DataFrame(columns=cols)
         pid2slot = {p: int(s) for p, s in zip(m.players["player_id"], m.players["slot"]) if p}
@@ -224,7 +227,7 @@ class LivePlayers:
                  "period": int(m.period[fi]), "minute": float(m.match_minute[fi]), "ok": ok, "x": x, "y": y,
                  "ex": e["end_ball_x"], "ey": e["end_ball_y"], "detail": None, "recv": -1, "key": False, "assist": False,
                  "xa": 0.0, "xg": 0.0, "shot_cat": None, "lines": 0, "role": None, "pressured": False,
-                 "t_ev": float(e["event_time_s"])}
+                 "t_ev": float(e["event_time_s"]), "key_fi": -1}
             r.update(kw)
             rows.append(r)
 
@@ -311,6 +314,7 @@ class LivePlayers:
                 a.at[pj, "key"] = True
                 a.at[pj, "xa"] = float(s["xg"])
                 a.at[pj, "assist"] = bool(s["shot_cat"] == "goal")
+                a.at[pj, "key_fi"] = int(s["fi"])
         # ---- model values (VAEP / OBV of on-ball actions) ----
         av = self.e.action_values()
         for c in ("vaep", "vaep_oa", "obv"):
@@ -323,6 +327,19 @@ class LivePlayers:
             for c in ("vaep", "vaep_oa", "obv"):
                 a[c] = np.where(on_ball, got[c].to_numpy(), np.nan)
         return a.sort_values(["fi", "eidx"], kind="stable").reset_index(drop=True)
+
+    def _actions_at(self, idx: int) -> pd.DataFrame:
+        """Credit a key pass / assist only once the associated shot has happened.
+
+        Keep the historical pass at its original frame for maps, but do not leak
+        the future shot's label or xA into earlier tables and player details.
+        """
+        acts = self.acts
+        out = acts[acts["fi"] <= idx].copy()
+        future = out["key_fi"] > idx
+        out.loc[future, ["key", "assist"]] = False
+        out.loc[future, "xa"] = 0.0
+        return out
 
     # ------------------------------------------------------------------ counting
     @staticmethod
@@ -427,7 +444,7 @@ class LivePlayers:
         ph = self.phys.at(idx)
         rc = self.recent(idx)
         acts = self.acts
-        upto = acts[acts["fi"] <= idx] if len(acts) else acts
+        upto = self._actions_at(idx)
         by_slot = {int(s): g for s, g in upto.groupby("slot")} if len(upto) else {}
         out = []
         for _, p in m.players.iterrows():
@@ -519,7 +536,8 @@ class LivePlayers:
         side = me["side"]
         mates = [r for r in rows if r["side"] == side]
         acts = self.acts
-        g = acts[(acts["slot"] == slot) & (acts["fi"] <= idx)] if len(acts) else acts
+        upto = self._actions_at(idx)
+        g = upto[upto["slot"] == slot] if len(upto) else upto
         heat = self.heatmap(slot, idx)
         maps = self._maps(g, side)
         f = self.flip(side, idx)
