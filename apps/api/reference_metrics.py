@@ -181,11 +181,28 @@ def das_frames(m, items: list[tuple[int, str, int, int]], want_surface: bool = F
         x, y = np.asarray(sim.x_grid, dtype=float), np.asarray(sim.y_grid, dtype=float)
         onp = (np.abs(x) <= grid.length / 2) & (np.abs(y) <= grid.width / 2)  # outside the pitch counts for nothing
         contrib = np.where(onp & np.isfinite(contrib), contrib, 0.0)
-        iy, ix = grid.cell_index(np.nan_to_num(x), np.nan_to_num(y))
-        flat = (iy * grid.nx + ix)
+        # The package samples space along 30 directions x 15 distances, so only a few hundred points carry value. Dropping each
+        # point into the single cell it falls in leaves most cells empty and the picture looks like scattered pixels. Instead every
+        # sample is spread over the cells around it (a Gaussian whose width follows the gap between neighbouring samples, i.e.
+        # it grows with distance from the ball). Each sample's weights add up to 1, so the surface still sums to the package's DAS.
+        x, y = np.broadcast_to(x, contrib.shape), np.broadcast_to(y, contrib.shape)  # the package shares one grid when frames agree
+        r = np.asarray(sim.r_grid, dtype=float)
+        dphi = 2 * np.pi / max(x.shape[1], 1)
+        arc = r[None, None, :] * dphi  # gap between neighbouring directions at each distance
+        radial = np.broadcast_to(dr[None, None, :], arc.shape)
+        sigma = np.broadcast_to(np.clip(0.6 * np.maximum(arc, radial), 1.2, 9.0), contrib.shape)
+        gx, gy = grid.mesh()
+        gx, gy = gx.ravel(), gy.ravel()
         surfaces = np.zeros((contrib.shape[0], grid.ny * grid.nx))
         for f in range(contrib.shape[0]):
-            np.add.at(surfaces[f], flat[f].ravel(), contrib[f].ravel())
+            m_ = contrib[f] > 0
+            if not m_.any():
+                continue
+            sx, sy, sv, ss = x[f][m_], y[f][m_], contrib[f][m_], sigma[f][m_]
+            w = np.exp(-((gx[None, :] - sx[:, None]) ** 2 + (gy[None, :] - sy[:, None]) ** 2) / (2 * ss[:, None] ** 2))
+            tot = w.sum(axis=1, keepdims=True)
+            ok = tot[:, 0] > 1e-12
+            surfaces[f] = (sv[ok, None] * w[ok] / tot[ok]).sum(axis=0)
         surfaces = surfaces.reshape(-1, grid.ny, grid.nx)
 
     for fid, k in keep.items():

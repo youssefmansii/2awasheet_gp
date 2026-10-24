@@ -29,7 +29,7 @@ import numpy as np
 import pandas as pd
 from scipy.ndimage import median_filter
 
-from metrics_engine import PENALTY_XG, MetricsEngine, xg_surface
+from metrics_engine import PENALTY_XG, MetricsEngine, xg_at, xg_surface
 
 # ---- physical thresholds (the usual GPS-vendor bands: 19.8 and 25.2 km/h) ----
 HSR_SPEED = 5.5  # m/s  high-speed running starts here
@@ -295,8 +295,7 @@ class LivePlayers:
             if str(ev["setpiece_type"].iloc[int(r["eidx"])]) == "P":
                 xg = PENALTY_XG
             elif np.isfinite(r["x"]) and np.isfinite(r["y"]):
-                iy, ix = m.grid.cell_index(float(r["x"]), float(r["y"]))
-                xg = float(self._xg[1 if adir == 1 else -1][iy, ix])
+                xg = float(self.e.shot_xg(int(r["eidx"])))
             else:
                 xg = 0.0
             a.at[j, "xg"] = xg
@@ -337,8 +336,6 @@ class LivePlayers:
         ok = lambda d: int((d["ok"] == True).sum())  # noqa: E712
         n_ps, n_ps_ok = len(ps), ok(ps)
         comp = ps[ps["ok"] == True]  # noqa: E712
-        flip = np.where(ps["period"] == 1, 1, 1)  # placeholder (kept simple): direction handled by caller
-        del flip
         dirs = np.array([self._dir(side, int(p)) for p in comp["period"]]) if len(comp) else np.array([])
         if len(comp):
             dx = (comp["ex"].to_numpy(dtype=float) - comp["x"].to_numpy(dtype=float)) * dirs

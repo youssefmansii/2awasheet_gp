@@ -31,7 +31,7 @@ function rgba(hex: string, a: number): string {
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
 }
 
-function drawPitch(ctx: CanvasRenderingContext2D, w: number, h: number, L: number, W: number) {
+export function drawPitch(ctx: CanvasRenderingContext2D, w: number, h: number, L: number, W: number) {
   const sx = w / L;
   const sy = h / W;
   const px = (x: number) => (x + L / 2) * sx;
@@ -159,12 +159,17 @@ export function AnalyticsPitch(props: Props) {
       drawPitch(ctx, w, h, length, width);
 
       // ---- grid layers: row 0 is the bottom of the pitch (y = -width/2) ----
+      // The model grid is coarse (about 2 m per cell). Painting every cell as a flat rectangle looks like pixels, so each layer is
+      // first drawn as a tiny image (one pixel per cell) and then stretched to the pitch with smooth (bilinear) scaling.
       const paintGrid = (grid: number[][], colorFor: (v: number) => string | null) => {
         const ny = grid.length;
         const nx = grid[0]?.length ?? 0;
         if (!ny || !nx) return;
-        const cw = w / nx;
-        const ch = h / ny;
+        const off = document.createElement('canvas');
+        off.width = nx;
+        off.height = ny;
+        const octx = off.getContext('2d');
+        if (!octx) return;
         for (let iy = 0; iy < ny; iy++) {
           const row = grid[iy];
           if (!row) continue;
@@ -173,16 +178,21 @@ export function AnalyticsPitch(props: Props) {
             if (v === undefined) continue;
             const c = colorFor(v);
             if (!c) continue;
-            ctx.fillStyle = c;
-            ctx.fillRect(ix * cw, h - (iy + 1) * ch, cw + 0.5, ch + 0.5);
+            octx.fillStyle = c;
+            octx.fillRect(ix, ny - 1 - iy, 1, 1); // row 0 is the bottom of the pitch
           }
         }
+        ctx.save();
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(off, 0, 0, nx, ny, 0, 0, w, h);
+        ctx.restore();
       };
 
       if (layers.pc) {
         paintGrid(frame.pitch_control_home, (v) => {
-          const a = Math.min(0.62, Math.abs(v - 0.5) * 1.35);
-          return a < 0.03 ? null : rgba(v >= 0.5 ? homeColor : awayColor, a);
+          const a = Math.min(0.62, Math.max(0, Math.abs(v - 0.5) - 0.01) * 1.4);
+          return a < 0.01 ? null : rgba(v >= 0.5 ? homeColor : awayColor, a);
         });
       }
       let labelY = 16;
@@ -198,7 +208,8 @@ export function AnalyticsPitch(props: Props) {
         for (const row of frame.das) for (const v of row) if (v > max) max = v;
         paintGrid(frame.das, (v) => {
           const t = Math.pow(v / max, 0.7);
-          return t < 0.12 ? null : rgba('#c8f45a', Math.min(0.85, t * 0.85));
+          const a = Math.min(0.85, Math.max(0, t - 0.06) * 0.95); // fades in smoothly, no hard edge
+          return a < 0.01 ? null : rgba('#c8f45a', a);
         });
         label(noBall ? 'DAS: needs the ball (not tracked here)' : 'DAS', 'rgba(200,244,90,0.95)');
       }
@@ -211,7 +222,8 @@ export function AnalyticsPitch(props: Props) {
           for (const row of grid) for (const v of row) if (v > gmax) gmax = v;
           paintGrid(grid, (v) => {
             const t = Math.pow(v / gmax, 0.6);
-            return t < 0.1 ? null : rgba('#facc15', Math.min(0.8, t * 0.8));
+            const a = Math.min(0.8, Math.max(0, t - 0.05) * 0.88);
+            return a < 0.01 ? null : rgba('#facc15', a);
           });
         }
         label(noBall ? 'OBSO: needs the ball (not tracked here)' : 'OBSO', 'rgba(250,204,21,0.95)');

@@ -14,9 +14,10 @@ import { announceMatchFile, clearMatchFiles, getMatchFiles, subscribeMatchFiles,
 import { Tab1CoreMetrics } from './Tab1CoreMetrics';
 import { Tab2PlayerAnalytics } from './Tab2PlayerAnalytics';
 import { Tab3LivePlayer } from './Tab3LivePlayer';
+import { Tab4TopAttacks } from './Tab4TopAttacks';
 import { ErrorBox, Panel, Spinner } from './ui';
 
-type TabKey = 'core' | 'live' | 'players';
+type TabKey = 'core' | 'live' | 'players' | 'attacks';
 type Phase = 'idle' | 'checking' | 'uploading' | 'loading' | 'ready' | 'error';
 interface Selected {
   id: string;
@@ -45,7 +46,7 @@ export function AnalyticsView() {
   const [idDraft, setIdDraft] = useState('');
   const [confirmedId, setConfirmedId] = useState<string | null>(null);
   const [tab, setTab] = useState<TabKey>('core');
-  const [visited, setVisited] = useState<Record<TabKey, boolean>>({ core: true, live: false, players: false });
+  const [visited, setVisited] = useState<Record<TabKey, boolean>>({ core: true, live: false, players: false, attacks: false });
   const [sending, setSending] = useState<string>('');
   const sentRef = useRef<{ id: string; events: string } | null>(null);
 
@@ -179,7 +180,7 @@ export function AnalyticsView() {
               </button>
             ) : null}
             <div role="tablist" aria-label="Analytics sections" className="flex gap-1 rounded-xl border border-line bg-panel p-1">
-              {([['core', 'Core metrics'], ['live', 'Live player'], ['players', 'Player analytics']] as const).map(([k, label]) => (
+              {([['core', 'Core metrics'], ['live', 'Live player'], ['players', 'Player analytics'], ['attacks', 'Top attacks']] as const).map(([k, label]) => (
                 <button
                   key={k}
                   type="button"
@@ -305,6 +306,9 @@ export function AnalyticsView() {
             </div>
             <div role="tabpanel" className={tab === 'players' ? '' : 'hidden'}>
               {visited.players ? <Tab2PlayerAnalytics key={`players-${selected.id}-${version}`} info={info} /> : null}
+            </div>
+            <div role="tabpanel" className={tab === 'attacks' ? '' : 'hidden'}>
+              {visited.attacks ? <Tab4TopAttacks key={`attacks-${selected.id}-${version}`} info={info} /> : null}
             </div>
           </>
         ) : null}

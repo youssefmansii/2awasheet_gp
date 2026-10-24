@@ -452,8 +452,21 @@ export function Tab2PlayerAnalytics({ info }: { info: MatchInfo }) {
               <Stat label="Pressured share" value={pct(press?.pressured_share)} hint="of all his on-ball actions" />
               <Stat label="Nearest opponent" value={press?.mean_nearest_opp_m == null ? '–' : `${press.mean_nearest_opp_m.toFixed(1)} m`} hint="on average when he acts" />
               <Stat label="Value per 100 pressured" value={fmt(press?.rating, 2)} hint="VAEP gained by successful pressured actions" help="Higher is better. Needs a decent number of pressured actions to mean anything." />
-              <Stat label="Pressured actions" value={String(press?.n_pressured ?? 0)} hint="sample size" />
+              <Stat label="Pressured actions" value={String(press?.n_pressured ?? 0)} hint={press?.reliable === false ? 'few actions: rough guide only' : 'sample size'} />
             </div>
+            {press?.pressure_levels && press.n_actions > 0 && (
+              <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <Stat label="Average pressure" value={press.mean_pressure == null ? '–' : press.mean_pressure.toFixed(2)} hint="0 = free, 1 = closed down" help="A smooth score for every action: an opponent 5 m or more away adds 0, one right next to him adds close to 1, and several close defenders add up (never above 1)." />
+                {press.pressure_levels.map((l) => (
+                  <Stat key={l.level} label={`Success · ${l.level} pressure`} value={l.n ? pct(l.success_rate) : '–'} hint={`${l.n} actions`} />
+                ))}
+              </div>
+            )}
+            {press?.success_rate_under_pressure_ci && (
+              <p className="mt-2 text-xs text-slate-500">
+                Success under pressure: {pct(press.success_rate_under_pressure)} (likely between {pct(press.success_rate_under_pressure_ci[0])} and {pct(press.success_rate_under_pressure_ci[1])}).
+              </p>
+            )}
           </Panel>
 
           <Panel title="Decision efficiency" subtitle="Did he pick the best pass available?" right={null}>

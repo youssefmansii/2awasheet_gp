@@ -37,6 +37,7 @@ from metrics_engine import MetricsEngine
 from player_analytics import PlayerAnalytics, _native
 from player_live import LivePlayers
 from reference_metrics import das_source
+from attacks import ATTACKS_VERSION, DANGER_P_MAX, DANGER_P_MIN, AttackFinder
 
 
 # ---------------------------------------------------------------------------
@@ -60,6 +61,8 @@ class Bundle:
         self.engine = MetricsEngine(self.match)
         self.analytics = PlayerAnalytics(self.engine)
         self.live = LivePlayers(self.engine)  # cheap to create: the tables are built the first time they are asked for
+        self.attacks = AttackFinder(self.engine)  # attacks + danger scores, computed the first time they are asked for
+        self.attacks_lock = threading.Lock()
         self.warm_state = "idle"  # idle | running | done | error
         self.warm_error: Optional[str] = None
         self.lock = threading.Lock()
@@ -129,6 +132,10 @@ def start_warmup(b: Bundle) -> None:
     def work():
         try:
             b.analytics.warm(progress=lambda s: print(f"[warmup {b.match.match_id}] {s}"))
+            with b.attacks_lock:  # the "Top attacks" tab is then ready at once
+                t0 = time.time()
+                n = len(b.attacks.attacks())
+                print(f"[warmup {b.match.match_id}] attacks: {n} found in {time.time() - t0:.1f}s")
             b.warm_state = "done"
         except Exception as exc:  # pragma: no cover
             b.warm_state, b.warm_error = "error", repr(exc)
@@ -474,3 +481,37 @@ def live_player_timeline(player_id: str, match_id: Optional[str] = None):
     b = get_bundle(match_id)
     slot = _live_slot(b, player_id)
     return b.live.timeline(slot)
+
+
+# ---------------------------------------------------------------------------
+# Top attacks: every attack of the match with its danger score (1-100), and the replay data of one attack
+# ---------------------------------------------------------------------------
+@app.get("/api/attacks", response_class=FastJSON)
+def attacks_list(match_id: Optional[str] = None):
+    """All attacks that reached the final third or ended in a shot, with xG, peak xT, danger score and ranks."""
+    b = get_bundle(match_id)
+    with b.attacks_lock:
+        t = time.time()
+        items = b.attacks.attacks()
+        summary = b.attacks.summary()
+        ms = round((time.time() - t) * 1000)
+    return FastJSON({
+        "match_id": b.match.match_id, "version": ATTACKS_VERSION, "compute_ms": ms,
+        "teams": {s: b.match.teams[s]["name"] for s in ("home", "away")},
+        "scale": {"p_min": DANGER_P_MIN, "p_max": DANGER_P_MAX,
+                  "bands": [{"from": 75, "label": "Very dangerous"}, {"from": 55, "label": "Dangerous"},
+                            {"from": 35, "label": "Promising"}, {"from": 1, "label": "Low threat"}]},
+        "summary": summary, "attacks": items,
+    })
+
+
+@app.get("/api/attacks/{attack_id}/track", response_class=FastJSON)
+def attack_track(attack_id: int, match_id: Optional[str] = None, step: int = Query(2, ge=1, le=6)):
+    """Player and ball positions of one attack (from 3 s before to 2 s after), its events and its xT curve, in one call."""
+    b = get_bundle(match_id)
+    with b.attacks_lock:
+        try:
+            return FastJSON(b.attacks.track(attack_id, step=step))
+        except KeyError:
+            raise HTTPException(404, f"attack {attack_id} not found in match {b.match.match_id}")
+

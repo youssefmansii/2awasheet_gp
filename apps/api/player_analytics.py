@@ -35,11 +35,11 @@ from typing import Callable, Optional
 import numpy as np
 import pandas as pd
 
-from data_loader import BIN_LABELS, default_data_dir, load_match
+from data_loader import BIN_LABELS, LOADER_VERSION, default_data_dir, load_match
 import reference_metrics as ref
 from metrics_engine import MetricsEngine, das_surface, defensive_line_x, xg_surface
 
-ANALYTICS_VERSION = "1.6"
+ANALYTICS_VERSION = "1.9"
 
 MIN_PASSES_PAIR = 3  # chemistry: minimum completed passes between a pair
 PRESS_RADIUS_M = 3.0  # an action is "under pressure" when an opponent is closer than this (matches the provider's own pressure label, AUC 0.86)
@@ -47,8 +47,22 @@ PRESS_THRESHOLD = PRESS_RADIUS_M  # kept for older callers
 RUN_SPEED = 5.5  # m/s: a "run" is >= 5.5 m/s (the high-speed-running line used by the web app)
 RUN_MIN_S = 1.0  # ... held for at least 1 second
 DECOY_LOOKAHEAD_S = 4.0  # a run is a decoy if the runner does not touch/receive the ball within this time
+PRESS_FADE_M = 5.0  # continuous pressure: an opponent 0 m away presses with weight 1, at 5 m or more with weight 0
+PRESS_LEVELS = ((0.0, 0.25, "low"), (0.25, 0.6, "medium"), (0.6, 1.01, "high"))
+PRESS_SENSITIVITY_M = (2.0, 3.0, 4.0)  # how much the "pressured" count depends on the chosen radius
 FATIGUE_SAMPLE_S = 15.0  # one pitch-control snapshot every 15 s of the match
 MIN_MINUTES_FOR_TREND = 3.0  # a block needs at least this much playing time to be compared
+
+
+def _wilson(k: int, n: int, z: float = 1.96) -> tuple[Optional[float], Optional[float]]:
+    """95 % Wilson interval for a share k/n (honest about small samples)."""
+    if n <= 0:
+        return None, None
+    p = k / n
+    den = 1 + z * z / n
+    centre = (p + z * z / (2 * n)) / den
+    half = z * np.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / den
+    return float(max(0.0, centre - half)), float(min(1.0, centre + half))
 
 
 def _native(x):
@@ -104,7 +118,7 @@ class PlayerAnalytics:
         return "_" + "-".join(parts)
 
     def _cache_file(self) -> Path:
-        return self.data_dir / "interim" / f"analytics_{self.m.match_id}_{ANALYTICS_VERSION}_{self.m.n_frames}_{int(self.e.pc_params.use_acceleration)}_{self.e.pass_model}{self._model_stamp()}.pkl"
+        return self.data_dir / "interim" / f"analytics_{self.m.match_id}_{ANALYTICS_VERSION}_L{LOADER_VERSION}_{self.m.n_frames}_{int(self.e.pc_params.use_acceleration)}_{self.e.pass_model}{self._model_stamp()}.pkl"
 
     def player_row(self, player_id) -> pd.Series:
         p = self._players[self._players["player_id"] == str(player_id)]
@@ -283,10 +297,16 @@ class PlayerAnalytics:
                 x, y = r.x, r.y
             if not len(opp_slots) or not np.isfinite(x):
                 continue
-            d = float(np.min(np.hypot(m.X[fi, opp_slots] - x, m.Y[fi, opp_slots] - y)))
+            dists = np.hypot(m.X[fi, opp_slots] - x, m.Y[fi, opp_slots] - y)
+            d = float(np.min(dists))
+            # continuous pressure 0..1: every opponent within PRESS_FADE_M adds weight (1 - d/fade); several close defenders
+            # add up but the total never exceeds 1 ("noisy-OR").  0 = nobody near, 1 = an opponent is on top of him.
+            w = np.clip(1.0 - dists / PRESS_FADE_M, 0.0, 1.0)
+            pressure = float(1.0 - np.prod(1.0 - w))
             rows.append({"event_idx": r.event_idx, "slot": int(r.slot), "side": r.side, "action": r.action,
                          "match_minute": r.match_minute, "bin_id": r.bin_id, "success": bool(r.success),
-                         "vaep": r.vaep_oa, "nearest_opp_m": d, "pressured": d < PRESS_RADIUS_M})
+                         "vaep": r.vaep_oa, "nearest_opp_m": d, "pressured": d < PRESS_RADIUS_M,
+                         "pressure": pressure, "n_opp_within_5m": int((dists < PRESS_FADE_M).sum())})
         return pd.DataFrame(rows)
 
     def press_report(self, slot: int) -> dict:
@@ -298,7 +318,20 @@ class PlayerAnalytics:
         ok = pr[pr["success"]]
         n_pr = len(pr)
         value = float(ok["vaep"].sum()) if n_pr else 0.0
+        levels = []
+        for lo, hi, name in PRESS_LEVELS:
+            g = mine[(mine["pressure"] >= lo) & (mine["pressure"] < hi)]
+            levels.append({"level": name, "n": int(len(g)), "success_rate": float(g["success"].mean()) if len(g) else None})
+        sens = [{"radius_m": r, "n_pressured": int((mine["nearest_opp_m"] < r).sum()),
+                 "share": float((mine["nearest_opp_m"] < r).mean()) if len(mine) else None} for r in PRESS_SENSITIVITY_M]
+        lo_ci, hi_ci = _wilson(len(ok), n_pr)
         return {
+            "mean_pressure": float(mine["pressure"].mean()) if len(mine) else None,
+            "pressure_levels": levels, "radius_sensitivity": sens,
+            "success_rate_under_pressure_ci": [lo_ci, hi_ci] if n_pr else None,
+            "reliable": bool(n_pr >= 15),
+            "note_pressure": "Pressure 0-1: how close the opponents are when he acts (5 m or more = 0, on top of him = 1). "
+                             "'Pressured' = an opponent within 3 m. With fewer than 15 pressured actions the percentages are only a rough guide.",
             "radius_m": PRESS_RADIUS_M, "threshold": PRESS_RADIUS_M, "n_actions": int(len(mine)),
             "mean_nearest_opp_m": float(mine["nearest_opp_m"].mean()) if len(mine) else None, "n_pressured": int(n_pr),
             "pressured_share": float(n_pr / len(mine)) if len(mine) else None,
@@ -336,30 +369,36 @@ class PlayerAnalytics:
             minutes_on = float(fmask.sum()) / m.fps / 60.0
             if minutes_on <= 0:
                 continue
+            # the pitch-control samples only come from live play (ball tracked), so distance, speed and the "enough minutes"
+            # test use the same live frames; otherwise dead-ball minutes would dilute some blocks and not others
+            lmask = fmask & np.isfinite(m.ball_x)
+            live_minutes = float(lmask.sum()) / m.fps / 60.0
             s = mine[mine["bin_id"] == b]
             a = av[(av["slot"] == slot) & (av["bin_id"] == b)] if len(av) else av
             d = dec[(dec["slot"] == slot) & (dec["bin_id"] == b)] if len(dec) else dec
-            speed = m.SPEED[fmask, slot]
+            speed = m.SPEED[lmask, slot]
             speed = np.where(speed <= 10.0, speed, np.nan)  # > 36 km/h is a tracking jump, not running
             rows.append({
-                "bin": b, "label": BIN_LABELS[b], "minutes_on_pitch": minutes_on,
+                "bin": b, "label": BIN_LABELS[b], "minutes_on_pitch": minutes_on, "live_minutes": live_minutes,
                 "area_m2": float(s["area_m2"].mean()) if len(s) else None,
                 "radius_m": float(np.sqrt(s["area_m2"] / np.pi).mean()) if len(s) else None,
                 "n_samples": int(len(s)),
                 "vaep_per_action": float(a["vaep_oa"].mean()) if len(a) else None, "n_actions": int(len(a)),
                 "decision_score": float(d["decision_score"].mean()) if len(d) else None, "n_passes": int(len(d)),
-                "distance_m": float(np.nansum(speed) / m.fps), "mean_speed": float(np.nanmean(speed)) if np.isfinite(speed).any() else None,
+                "distance_m": float(np.nansum(speed) / m.fps),
+                "distance_per_live_min": float(np.nansum(speed) / m.fps / live_minutes) if live_minutes > 0.5 else None, "mean_speed": float(np.nanmean(speed)) if np.isfinite(speed).any() else None,
             })
         # change vs. the player's first meaningful block
-        base = next((r for r in rows if r["radius_m"] and r["minutes_on_pitch"] >= MIN_MINUTES_FOR_TREND), None)
+        base = next((r for r in rows if r["radius_m"] and r["live_minutes"] >= MIN_MINUTES_FOR_TREND), None)
         for r in rows:
             r["radius_change_pct"] = (100.0 * (r["radius_m"] / base["radius_m"] - 1.0)
-                                      if base and r["radius_m"] and r["minutes_on_pitch"] >= MIN_MINUTES_FOR_TREND else None)
+                                      if base and r["radius_m"] and r["live_minutes"] >= MIN_MINUTES_FOR_TREND else None)
             r["vaep_change"] = (r["vaep_per_action"] - base["vaep_per_action"]
                                 if base and base["vaep_per_action"] is not None and r["vaep_per_action"] is not None else None)
         return {"bins": rows, "baseline_bin": base["label"] if base else None,
                 "note": "Radius = sqrt(A/pi) with A = pitch-control area the player controls on his own. "
-                        f"Blocks with < {MIN_MINUTES_FOR_TREND:.0f} min on the pitch are not compared."}
+                        f"Blocks with < {MIN_MINUTES_FOR_TREND:.0f} min of live play (ball in play) are not compared. "
+                        "Distance and speed also count live play only, so blocks are comparable."}
 
     # =====================================================================
     # 3. Chemistry matrix

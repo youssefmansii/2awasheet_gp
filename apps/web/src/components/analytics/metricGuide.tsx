@@ -83,7 +83,7 @@ export const GUIDE: GuideEntry[] = [
     read:
       'Same idea as VAEP but uses what was EXPECTED: the chance the pass succeeds × the value if it works + the chance it fails × the value if it fails, minus the value before. So a risky pass that usually fails scores lower than a safe one, even when both happened to work.',
     lookFor: 'Compare OBV with VAEP: when VAEP is much lower than OBV the player was unlucky; much higher means he got away with it.',
-    careful: 'Our own expected-outcome variant (a simple pass-success model, AUC 0.77), not the proprietary StatsBomb OBV. Penalties are valued at 0.76 xG.'
+    careful: 'Our own expected-outcome variant (a simple pass-success model, AUC 0.77), not the proprietary StatsBomb OBV. Penalties are valued at 0.79 xG.'
   }
 ];
 

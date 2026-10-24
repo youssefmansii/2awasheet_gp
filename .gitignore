@@ -29,3 +29,9 @@ performance/generated-*.jsonl
 .dev.vars
 .dev.vars.*
 apps/cloudflare/public/
+# Python cache files
+__pycache__/
+*.pyc
+
+# Code dump, not part of the app
+repomix-output.xml

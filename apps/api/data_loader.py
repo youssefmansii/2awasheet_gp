@@ -44,7 +44,8 @@ try:  # orjson is ~3x faster than json; it is optional.
 except ImportError:  # pragma: no cover
     _loads = json.loads
 
-LOADER_VERSION = "1.2"
+LOADER_VERSION = "1.4"
+MAX_BALL_FILL_S = 10.0  # holes in the ball track up to this long are bridged when real events sit inside them
 
 # ---------------------------------------------------------------------------
 # Standard pitch + grid (spec: 105 x 68 m, 50 x 32 cells)
@@ -858,6 +859,107 @@ def load_match(
                          ("target_id", "target_slot"), ("shooter_id", "shooter_slot")):
             events[out] = events[col].map(lambda v: pid_to_slot.get(v, -1) if v else -1).astype(int)
         quality["event_players_unmapped"] = int(((events["player_id"].notna()) & (events["actor_slot"] < 0)).sum())
+
+        # 9b) the tracked ball is missing for a few seconds around some real actions (the provider only smooths the ball while it
+        # is in play). On the event frame the acting player and the ball are at the same spot (median distance 0.00 m on 3816),
+        # so (1) an event with no ball position takes the position of the player who played it, and (2) short holes in the
+        # ball track (up to MAX_BALL_FILL_S) that contain such events are bridged by a straight line through those points.
+        # Long holes (throw-ins, free kicks, injuries, VAR) are real dead-ball time and stay empty.
+        asl = events["actor_slot"].to_numpy()
+        fi_ = events["frame_idx"].to_numpy()
+        ax_ev = np.full(len(events), np.nan)
+        ay_ev = np.full(len(events), np.nan)
+        okk = (fi_ >= 0) & (asl >= 0)
+        ax_ev[okk] = X[fi_[okk], asl[okk]]
+        ay_ev[okk] = Y[fi_[okk], asl[okk]]
+        no_ball = ~np.isfinite(events["ball_x"].to_numpy()) & np.isfinite(ax_ev)
+        events.loc[no_ball, "ball_x"] = ax_ev[no_ball]
+        events.loc[no_ball, "ball_y"] = ay_ev[no_ball]
+        quality["events_ball_from_actor"] = int(no_ball.sum())
+        # (3) the tracked ball is sometimes FAR from the player who plays it (3 % of events on 3816, mostly clearances, duels and
+        # rebounds; up to 70 m): the ball track is wrong there, not the event. The event takes the player's position, and the
+        # ball track between the two nearest events that agree with their player (<= 2 m) is rebuilt through the event points.
+        bt_x = np.where(fi_ >= 0, ball[np.maximum(fi_, 0), 0], np.nan)  # the TRACKED ball at each event
+        bt_y = np.where(fi_ >= 0, ball[np.maximum(fi_, 0), 1], np.nan)
+        dist_ev = np.hypot(bt_x - ax_ev, bt_y - ay_ev)
+        far = np.isfinite(dist_ev) & (dist_ev > 5.0)
+        good = np.isfinite(dist_ev) & (dist_ev <= 2.0)  # the track agrees with the player here
+        events.loc[far, "ball_x"] = ax_ev[far]
+        events.loc[far, "ball_y"] = ay_ev[far]
+        quality["events_ball_far_from_actor"] = int(far.sum())
+        good_f = np.unique(fi_[good])
+        all_f, all_x, all_y = fi_[okk], ax_ev[okk], ay_ev[okk]
+        o_ = np.argsort(all_f, kind="stable")
+        all_f, all_x, all_y = all_f[o_], all_x[o_], all_y[o_]
+        ev_f_sorted = np.unique(fi_[fi_ >= 0])
+        repaired = 0
+        for fb in np.unique(fi_[far]):
+            k_ = np.searchsorted(good_f, fb)
+            ga = int(good_f[k_ - 1]) if k_ > 0 else -1
+            gb = int(good_f[k_]) if k_ < len(good_f) else -1
+            same_period = ga >= 0 and gb >= 0 and full_per[ga] == full_per[gb] == full_per[fb]
+            if same_period and (gb - ga) <= MAX_BALL_FILL_S * fps:
+                # rebuild the whole stretch between the two trustworthy events, through every event point in between
+                inside = (all_f > ga) & (all_f < gb) & np.isfinite(all_x)
+                tx = np.concatenate(([ga], all_f[inside], [gb])).astype(float)
+                vx = np.concatenate(([ball[ga, 0]], all_x[inside], [ball[gb, 0]]))
+                vy = np.concatenate(([ball[ga, 1]], all_y[inside], [ball[gb, 1]]))
+                keep_ = np.concatenate(([True], np.diff(tx) > 0))
+                tt = np.arange(ga + 1, gb, dtype=float)
+                ball[ga + 1:gb, 0] = np.interp(tt, tx[keep_], vx[keep_])
+                ball[ga + 1:gb, 1] = np.interp(tt, tx[keep_], vy[keep_])
+                repaired += int(gb - ga - 1)
+            else:  # no trustworthy neighbours close enough: better no ball than a wrong ball (from the previous event to the next good one)
+                j_ = np.searchsorted(ev_f_sorted, fb)
+                prev_ev = int(ev_f_sorted[j_ - 1]) if j_ > 0 else fb - int(fps)
+                lo_ = max(prev_ev + 1, int(fb - 5 * fps), 0)
+                hi_ = min(gb if gb > fb else int(fb + fps), int(fb + 5 * fps), T)
+                ball[lo_:hi_, :] = np.nan
+        quality["ball_frames_repaired"] = repaired
+        # end positions follow the (repaired) ball track
+        nf0 = events["next_frame_idx"].to_numpy()
+        okn = nf0 >= 0
+        events["end_ball_x"] = np.where(okn, ball[np.maximum(nf0, 0), 0], np.nan)
+        events["end_ball_y"] = np.where(okn, ball[np.maximum(nf0, 0), 1], np.nan)
+        # bridge short holes in the ball track
+        max_fill = int(round(MAX_BALL_FILL_S * fps))
+        filled_frames = 0
+        anchor_f = fi_[okk]
+        anchor_x, anchor_y = ax_ev[okk], ay_ev[okk]
+        order = np.argsort(anchor_f, kind="stable")
+        anchor_f, anchor_x, anchor_y = anchor_f[order], anchor_x[order], anchor_y[order]
+        for a_, b_ in slices:
+            seg = ball[a_:b_, 0]
+            hole = ~np.isfinite(seg)
+            if not hole.any():
+                continue
+            edges = np.diff(np.concatenate(([0], hole.astype(np.int8), [0])))
+            for h0, h1 in zip(np.flatnonzero(edges == 1), np.flatnonzero(edges == -1)):
+                g0, g1 = a_ + h0, a_ + h1  # hole = frames g0 .. g1-1
+                if h0 == 0 or h1 >= (b_ - a_) or (g1 - g0) > max_fill:
+                    continue
+                inside = (anchor_f >= g0) & (anchor_f < g1) & np.isfinite(anchor_x)
+                if not inside.any():
+                    continue
+                tx = np.concatenate(([g0 - 1], anchor_f[inside], [g1])).astype(float)
+                vx = np.concatenate(([ball[g0 - 1, 0]], anchor_x[inside], [ball[g1, 0]]))
+                vy = np.concatenate(([ball[g0 - 1, 1]], anchor_y[inside], [ball[g1, 1]]))
+                if not (np.isfinite(vx).all() and np.isfinite(vy).all()):
+                    continue
+                keep = np.concatenate(([True], np.diff(tx) > 0))  # strictly increasing time for interp
+                tt = np.arange(g0, g1, dtype=float)
+                ball[g0:g1, 0] = np.interp(tt, tx[keep], vx[keep])
+                ball[g0:g1, 1] = np.interp(tt, tx[keep], vy[keep])
+                filled_frames += int(g1 - g0)
+        quality["ball_frames_bridged"] = int(filled_frames)
+        # pass / action end positions: the next event's actor stands where the ball arrives
+        nxt_bx = events["ball_x"].shift(-1).to_numpy()
+        nxt_by = events["ball_y"].shift(-1).to_numpy()
+        nf_ = events["next_frame_idx"].to_numpy()
+        need = ~np.isfinite(events["end_ball_x"].to_numpy()) & (nf_ >= 0) & (nf_ != fi_) & np.isfinite(nxt_bx)
+        events.loc[need, "end_ball_x"] = nxt_bx[need]
+        events.loc[need, "end_ball_y"] = nxt_by[need]
+        quality["events_end_from_next"] = int(need.sum())
         # latest event at or before each frame
         marker = np.full(T, -1, dtype=np.int32)
         for i, f_ in enumerate(fi):

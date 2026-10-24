@@ -478,7 +478,7 @@ export function Tab3LivePlayer({ info }: { info: MatchInfo }) {
                   <Stat label="Shots" value={String(stats.shots)} hint={`${stats.shots_on_target} on target · ${stats.shots - stats.shots_on_target - stats.goals_ruled_out - stats.shots_other} off or blocked`} help="All attempts. A shot that is a goal or is saved counts as on target." />
                   <Stat label="On target" value={ratio(stats.shots_on_target, stats.shots)} hint={stats.shots ? `${pct(stats.shots_on_target / stats.shots)} of his shots` : 'no shots yet'} />
                   <Stat label="Goals" value={String(stats.goals)} hint={stats.goals_ruled_out ? `${stats.goals_ruled_out} ruled out (offside / VAR)` : 'counted only if play restarts with a kick-off'} help="A goal counts only when the next restart is a kick-off, so goals that were disallowed are not counted." />
-                  <Stat label="xG" value={stats.xg.toFixed(2)} hint={stats.shots ? `${signed(stats.goals - stats.xg, 2)} goals vs expected` : 'expected goals'} help="Expected goals: the sum of the scoring chance of each shot (our distance-and-angle model; penalties 0.76)." />
+                  <Stat label="xG" value={stats.xg.toFixed(2)} hint={stats.shots ? `${signed(stats.goals - stats.xg, 2)} goals vs expected` : 'expected goals'} help="Expected goals: the sum of the scoring chance of each shot (our xG model v2, which also sees the goalkeeper and the defenders in the way; penalties 0.79)." />
                 </div>
                 <div className="mt-3">
                   <SplitBar

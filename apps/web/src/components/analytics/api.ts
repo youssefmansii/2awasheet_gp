@@ -240,6 +240,14 @@ export interface PressReport {
   success_rate_free?: number | null;
   value_generated?: number;
   rating?: number | null;
+  /** v1.7: smooth pressure score 0..1 (0 = nobody within 5 m, 1 = an opponent on top of him), averaged over his actions */
+  mean_pressure?: number | null;
+  pressure_levels?: { level: 'low' | 'medium' | 'high'; n: number; success_rate: number | null }[];
+  radius_sensitivity?: { radius_m: number; n_pressured: number; share: number | null }[];
+  /** 95 % interval of the success rate under pressure */
+  success_rate_under_pressure_ci?: [number, number] | null;
+  /** false when he had fewer than 15 pressured actions: the percentages are only a rough guide */
+  reliable?: boolean;
 }
 
 export interface PlayerReport {
@@ -611,3 +619,147 @@ export function clockLabel(period: number, minute: number): string {
   if (minute > end) return `${end}+${Math.ceil(minute - end)}'`;
   return `${Math.max(1, Math.ceil(minute))}'`;
 }
+
+// ---- Top attacks (attacks of the match with a 1-100 danger score, and the replay data of one attack) ----
+export interface AttackShot {
+  event_idx: number;
+  frame_num: number;
+  /** seconds from the start of the attack */
+  t: number;
+  player: string;
+  slot: number;
+  xg: number;
+  penalty: boolean;
+  goal: boolean;
+  /** the ball went in but the goal was ruled out (offside / VAR): its xG does not count */
+  disallowed: boolean;
+  outcome: string;
+  distance_m: number;
+  x: number;
+  y: number;
+  header: boolean;
+  /** outfield opponents inside the triangle ball - post - post */
+  defenders_in_way: number | null;
+  keeper_from_goal_m: number | null;
+  /** xG of 0.38 or more, or a penalty */
+  big_chance: boolean;
+}
+
+export interface AttackRow {
+  id: number;
+  side: Side;
+  team: string;
+  period: number;
+  minute: number;
+  start_frame: number;
+  end_frame: number;
+  replay_start_frame: number;
+  replay_end_frame: number;
+  key_frame: number;
+  duration_s: number;
+  /** StatsBomb-style play pattern: Regular play, Counter-attack, Corner, Free kick, Penalty, Throw-in, Goal kick, Kick-off, Drop ball */
+  pattern: string;
+  set_piece: boolean;
+  n_events: number;
+  passes: number;
+  passes_completed: number;
+  players_involved: number;
+  start_x: number;
+  max_x: number;
+  reached_final_third: boolean;
+  entered_box: boolean;
+  shots: AttackShot[];
+  n_shots: number;
+  /** chance that at least one counted shot went in */
+  xg: number;
+  goal: boolean;
+  disallowed_goal: boolean;
+  /** highest expected threat at a spot the team controlled */
+  peak_xt: number;
+  xt_gained: number;
+  /** max(xg, peak_xt) */
+  danger_p: number;
+  /** 1-100 on a fixed logarithmic scale */
+  danger: number;
+  danger_label: string;
+  danger_source: 'shot' | 'position';
+  /** Opta / StatsBomb-style labels: Big chance, Fast break, High turnover, Direct attack, Build-up */
+  tags: string[];
+  /** share of the ball's travel that went towards goal (0..1) */
+  directness: number;
+  /** metres gained towards goal per second (Opta's direct speed) */
+  direct_speed: number;
+  progress_m: number;
+  /** raw EPV of the best controlled spot (before the 0.852 scale) */
+  peak_epv_raw: number;
+  /** share of that spot the team controlled (pitch control), shown as context */
+  peak_control: number;
+  /** best controlled spot BEFORE the first shot (used for the non-circular check) */
+  pre_shot_xt: number;
+  das: number | null;
+  obso: number | null;
+  defenders_goal_side: number | null;
+  story: string;
+  rank_goals_first: number;
+  rank_danger: number;
+  rank_goals_first_team: number;
+  rank_danger_team: number;
+}
+
+export interface AttackTeamSummary {
+  team: string | null;
+  attacks: number;
+  shots: number;
+  goals: number;
+  dangerous: number;
+  xg: number;
+  mean_danger: number;
+}
+
+export interface AttacksResponse {
+  match_id: string;
+  version: string;
+  compute_ms: number;
+  teams: { home: string | null; away: string | null };
+  scale: { p_min: number; p_max: number; bands: { from: number; label: string }[] };
+  summary: { home: AttackTeamSummary; away: AttackTeamSummary };
+  attacks: AttackRow[];
+}
+
+export interface AttackTrackFrame {
+  f: number;
+  /** seconds from the start of the attack (negative = lead-in) */
+  t: number;
+  b: [number, number] | null;
+  /** [slot, x, y] */
+  p: [number, number, number][];
+}
+
+export interface AttackTrackEvent {
+  t: number;
+  frame_num: number;
+  type: string;
+  side: Side | null;
+  slot: number;
+  player: string;
+  x: number | null;
+  y: number | null;
+  end_x: number | null;
+  end_y: number | null;
+  completed: boolean;
+  in_attack: boolean;
+}
+
+export interface AttackTrack {
+  attack: AttackRow;
+  fps: number;
+  step: number;
+  frames: AttackTrackFrame[];
+  /** [t, xT of the ball] */
+  xt: [number, number][];
+  events: AttackTrackEvent[];
+  players: { slot: number; side: Side; jersey: string; name: string }[];
+  attack_dir: number;
+  pitch: { length: number; width: number };
+}
+
