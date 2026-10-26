@@ -3,5 +3,10 @@ packages:
   - packages/*
 onlyBuiltDependencies:
   - esbuild
+  - workerd
 allowBuilds:
   esbuild: true
+  # Local Cloudflare runtime used by wrangler dev / test:cloudflare.
+  workerd: true
+  # Swagger UI's install-time telemetry stays disabled.
+  '@scarf/scarf': false
