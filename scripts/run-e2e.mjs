@@ -4,6 +4,8 @@ import { spawn } from 'node:child_process';
 const node = process.execPath;
 const server = spawn(node, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1'], {
   cwd: 'apps/web',
+  // Tests mock the default API address; ignore any local VITE_CV_API_BASE override.
+  env: { ...process.env, VITE_CV_API_BASE: 'https://tracking-cv-api.youssefmansi2.workers.dev' },
   stdio: 'inherit'
 });
 

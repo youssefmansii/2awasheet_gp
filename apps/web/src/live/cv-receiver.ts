@@ -2,7 +2,25 @@ import { WorkloadAccumulator, packFrames, parseTrackingLine, type ParsedFrame, t
 import { CV_LIMITS } from '../../../api/src/cv-types';
 import { validateCvBatch } from '../../../api/src/cv-validation';
 
-export const CV_API_BASE = 'https://tracking-cv-api.youssefmansi2.workers.dev';
+export const DEFAULT_CV_API_BASE = 'https://tracking-cv-api.youssefmansi2.workers.dev';
+/**
+ * The CV API this viewer reads from. Override with VITE_CV_API_BASE in apps/web/.env.local
+ * (e.g. your own Cloudflare deployment). It is a build-time constant, never user-typed input,
+ * so a mistyped value cannot receive the key at runtime. HTTPS only, except localhost.
+ */
+export function resolveCvApiBase(value: string | undefined): string {
+  const text = value?.trim().replace(/\/+$/, '');
+  if (!text) return DEFAULT_CV_API_BASE;
+  try {
+    const url = new URL(text);
+    const local = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+    if ((url.protocol === 'https:' || (local && url.protocol === 'http:')) && url.pathname === '/' && !url.search && !url.hash
+      && !url.username && !url.password) return url.origin;
+  } catch { /* fall through */ }
+  console.error('Ignoring invalid VITE_CV_API_BASE; use an https:// origin such as https://tracking-cv-api.example.workers.dev');
+  return DEFAULT_CV_API_BASE;
+}
+export const CV_API_BASE = resolveCvApiBase((import.meta as { env?: Record<string, string | undefined> }).env?.VITE_CV_API_BASE);
 export function cvReadUrl(id: string): string {
   if (!/^[a-f0-9]{32}$/.test(id)) throw new Error('Enter the 32-character session ID returned by the API.');
   return `${CV_API_BASE}/api/cv/sessions/${id}/frames?limit=300`;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CvReceiver, cvBatchUrl, cvReadUrl } from '../../../apps/web/src/live/cv-receiver';
+import { CvReceiver, cvBatchUrl, cvReadUrl, resolveCvApiBase, DEFAULT_CV_API_BASE } from '../../../apps/web/src/live/cv-receiver';
 const id = 'a'.repeat(32);
 const frame = (n: number) => ({ frameNum: n, videoTimeMs: n * 100, period: 1, periodGameClockTime: n / 10,
   homePlayers: [{ jerseyNum: '10', x: n * 0.5, y: 0 }], awayPlayers: [], balls: [] });
@@ -117,5 +117,19 @@ describe('CV live receiver: durable batch archive, one by one', () => {
     expect(() => r.consumeBatch(wrongCount)).toThrow();
     expect(() => r.consumeBatch({ ...none(5), batch: undefined })).toThrow();
     expect(r.consumeBatch(stored(1, 5, 5)).processedFrames).toBe(10);
+  });
+});
+
+describe('CV API address setting', () => {
+  it('accepts an https origin (or localhost) and falls back to the default otherwise', () => {
+    expect(resolveCvApiBase(undefined)).toBe(DEFAULT_CV_API_BASE);
+    expect(resolveCvApiBase('https://tracking-cv-api.me.workers.dev/')).toBe('https://tracking-cv-api.me.workers.dev');
+    expect(resolveCvApiBase('http://127.0.0.1:8787')).toBe('http://127.0.0.1:8787');
+    const error = console.error; console.error = () => undefined;
+    try {
+      for (const bad of ['http://evil.example', 'https://x.example/path', 'not a url', 'https://user:pw@x.example']) {
+        expect(resolveCvApiBase(bad)).toBe(DEFAULT_CV_API_BASE);
+      }
+    } finally { console.error = error; }
   });
 });
