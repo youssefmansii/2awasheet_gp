@@ -4,14 +4,14 @@ import { documentationResponse } from '../../../apps/cloudflare/src/docs';
 import { validateCvBatch } from '../../../apps/api/src/cv-validation';
 
 describe('Swagger documentation contract', () => {
-  it('documents all six API operations with same-origin servers and Bearer security', () => {
+  it('documents all nine API operations with same-origin servers and Bearer security', () => {
     expect(openApi.openapi).toBe('3.1.0');
     expect(openApi.servers).toEqual([{ url: '/', description: 'This API instance (same origin)' }]);
     expect(openApi.security).toEqual([{ bearerAuth: [] }]);
     expect(openApi.paths['/health'].get.security).toEqual([]);
     expect(openApi.paths['/api/cv/sessions'].post).not.toHaveProperty('requestBody');
     const operations = Object.values(openApi.paths).flatMap((path) => Object.keys(path).filter((k) => ['get', 'post', 'delete'].includes(k)));
-    expect(operations).toHaveLength(6);
+    expect(operations).toHaveLength(9);
   });
   it('uses valid upload examples and preserves mandatory jersey and variable-batch rules', () => {
     const example = openApi.components.schemas.Batch.examples[0];

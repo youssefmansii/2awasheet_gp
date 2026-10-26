@@ -79,7 +79,7 @@ export function LiveApi({ metadata }: { metadata: MatchMetadata | null }) {
           }} className="min-h-11 rounded-xl border border-line px-5 disabled:opacity-40">{paused ? 'Resume playback' : 'Pause playback'}</button>
         </div>
       </form>
-      {intervalMs === 60000 ? <p className="text-xs leading-5 text-amber-200">Checks once per minute after the first immediate request. Frequent uploads may overwrite the server’s 300-frame / 1.5 MiB buffer before the next check, causing missed frames. Playback speed is unchanged.</p> : null}
+      {intervalMs === 60000 ? <p className="text-xs leading-5 text-amber-200">Checks once per minute when no new batch is waiting. Every uploaded batch is stored on the server, so nothing is missed — stored batches are fetched one after another as soon as a check finds them. Playback speed is unchanged.</p> : null}
       <p className="text-xs leading-5 text-muted">The key is used only in an Authorization header, not stored in browser storage or URLs, and cleared from the form on connection. Use Local replay to read a whole file on your computer. Default live pitch: {pitch?.length ?? 105} × {pitch?.width ?? 68} m; metadata selected in Local replay is reused here.</p>
       <div role="status" className="rounded-xl bg-black/20 p-4 text-sm leading-6">
         <p className="font-semibold">{state}</p>{message ? <p className="text-muted">{message}</p> : null}
@@ -90,7 +90,7 @@ export function LiveApi({ metadata }: { metadata: MatchMetadata | null }) {
       {error ? <p role="alert" className="rounded-xl border border-amber-400/40 p-3 text-sm text-amber-200">{error}</p> : null}
       {update?.missingFrames ? <p className="rounded-xl border border-amber-400/40 p-3 text-sm text-amber-200">Partial history: earlier frames were not available or were missed. Workload covers observed frames only, not the whole match. Movement is not bridged across known missing frames.</p> : null}
       {update?.warnings.includes('MISSING_PLAYER_QUALITY') ? <p className="text-sm text-amber-200">CV confidence/visibility fields are missing. Quality indicators cannot establish tracking reliability from absent quality metadata.</p> : null}
-      <p className="text-xs leading-5 text-muted">Positions and statistics follow played frames, not upload time. Workload checkpoints update about once per source second and at the end of a batch. Repeated polls are deduplicated. Playback waits when empty and resumes automatically; Pause keeps receiving. The browser queues up to 3,600 frames, while the server retains at most 300 frames / 1.5 MiB, not a match archive. Connect before uploading consecutive batches so none are missed. Reconnecting resets playback and observed statistics.</p>
+      <p className="text-xs leading-5 text-muted">Positions and statistics follow played frames, not upload time. Workload checkpoints update about once per source second and at the end of a batch. The server stores every uploaded batch under the session ID; this viewer reads them one by one in sequence order, so you can connect at any time during the session and start from the first batch. Playback waits when empty and resumes automatically; Pause keeps receiving until the 3,600-frame browser queue is full, then waits — stored batches are not lost. Reconnecting replays the session from its first stored batch and resets observed statistics.</p>
     </section>
     {data ? <>
       <section className="rounded-3xl border border-line bg-panel p-3" aria-label="Live API pitch">

@@ -7,21 +7,24 @@ const frameExample = { frameNum: 0, videoTimeMs: 0, period: 1, periodGameClockTi
     confidence: 'HIGH', visibility: 'VISIBLE' }], awayPlayers: [], balls: [] };
 const sessionExample = { sessionId, createdAt: '2026-10-18T12:00:00.000Z',
   expiresAt: '2026-10-18T14:00:00.000Z', idleExpiresAt: '2026-10-18T12:15:00.000Z',
-  receivedAt: null, lastSequence: null, receivedFrames: 0, retainedFrames: 0, warnings: [] };
+  receivedAt: null, lastSequence: null, receivedFrames: 0, retainedFrames: 0, warnings: [], storedBatches: 0, archivedBytes: 0 };
 const activeExample = { ...sessionExample, receivedAt: '2026-10-18T12:00:01.000Z',
-  idleExpiresAt: '2026-10-18T12:15:01.000Z', lastSequence: 0, receivedFrames: 1, retainedFrames: 1 };
+  idleExpiresAt: '2026-10-18T12:15:01.000Z', lastSequence: 0, receivedFrames: 1, retainedFrames: 1, storedBatches: 1, archivedBytes: 214 };
+const batchSummaryExample = { sequence: 0, frameOffset: 0, frameCount: 1, firstFrameNum: 0, lastFrameNum: 0,
+  firstVideoTimeMs: 0, lastVideoTimeMs: 0, bytes: 214, receivedAt: '2026-10-18T12:00:01.000Z' };
 const receiptExample = { sessionId, sequence: 0, acceptedFrames: 1, receivedFrames: 1,
   receivedAt: '2026-10-18T12:00:01.000Z', warnings: [], duplicate: false };
 const content = (schema: object, example: unknown) => ({ 'application/json': { schema, example } });
 const ok = (name: string, description: string, example: unknown) => ({ description, content: content(ref(name), example) });
 const errors: Record<number, [string, string]> = {
-  400: ['INVALID_JSON', 'Malformed UTF-8 JSON, invalid limit or unexpected session-creation body.'],
+  400: ['INVALID_JSON', 'Malformed UTF-8 JSON, invalid limit/after query or unexpected session-creation body.'],
   401: ['UNAUTHORIZED', 'A valid Bearer API key is required.'],
   403: ['ORIGIN_DENIED', 'This browser origin or method is not enabled. Only explicitly configured frontend GET reads are allowed cross-origin.'],
   404: ['NOT_FOUND', 'Unknown or expired session/endpoint. Create a new session if needed.'],
   408: ['REQUEST_TIMEOUT', 'Upload body timed out after 10 seconds.'],
   409: ['SEQUENCE_CONFLICT', 'Sequence already accepted with different content.'],
   413: ['BODY_TOO_LARGE', 'JSON body exceeds 1.5 MiB.'],
+  507: ['ARCHIVE_FULL', 'This session has reached its stored-batch limit; create a new session.'],
   415: ['UNSUPPORTED_MEDIA_TYPE', 'Send uncompressed application/json, not JSONL or multipart.'],
   422: ['INVALID_FRAME', 'frames[0].homePlayers[0]: jerseyNum is required.'],
   429: ['RATE_LIMITED', 'Request, failed-auth or four-active-session limit reached; retry later.'],
@@ -38,6 +41,9 @@ const sessionParameter = { name: 'sessionId', in: 'path', required: true,
   description: 'The 32-character lowercase hex ID returned by session creation. Share this ID between producer and viewer.',
   schema: { type: 'string', pattern: '^[a-f0-9]{32}$' }, example: sessionId };
 const dateTime = { type: 'string', format: 'date-time' };
+const afterParameter = { name: 'after', in: 'query', required: false,
+  description: 'Cursor: only batches with a greater sequence. Use the last processed batch sequence; -1 or omitted starts at the beginning.',
+  schema: { type: 'integer', minimum: -1, maximum: Number.MAX_SAFE_INTEGER, default: -1 }, example: -1 };
 const nonnegative = { type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER };
 const quality = { visibility: { type: 'string', enum: ['VISIBLE', 'ESTIMATED'] },
   confidence: { type: 'string', enum: ['HIGH', 'MEDIUM', 'LOW'] } };
@@ -48,13 +54,14 @@ const playerArray = { type: 'array', maxItems: CV_LIMITS.teamPlayers, items: ref
 
 export const openApi = {
   openapi: '3.1.0',
-  info: { title: 'Tracking Studio — CV API', version: '1.1.0',
-    description: 'Backend-only prototype for one trusted team. Click Authorize and paste the API key value WITHOUT the Bearer prefix. The owner shares the key privately; session creation returns an ID, not a key.\n\nWorkflow: create session (no body), upload batches starting at sequence 0, read latest/recent frames, then delete the session. Try it out makes REAL requests, including creation and deletion. Your key is not saved across reloads.\n\nBatch size is flexible: 1–300 frames and at most 1.5 MiB of UTF-8 JSON per request. Send all available players in each frame. No gzip, multipart or JSONL-file uploads on these endpoints.\n\nSessions retain only the latest 300 frames AND 1.5 MiB of serialized frame data (plus metadata/32 retry receipts), not a full match. Idle expiry: 15 minutes without a newly accepted upload; absolute expiry: 2 hours. Reads/retries do not extend expiry. Four active sessions maximum. Global limits: 1,200 non-documentation/non-health requests per minute; after 30 failed authentications per minute, further failures return 429. Cloudflare quotas also apply. All key holders can access/delete known sessions. Use consented diagnostic data only.' },
+  info: { title: 'Tracking Studio — CV API', version: '1.2.0',
+    description: 'Backend-only prototype for one trusted team. Click Authorize and paste the API key value WITHOUT the Bearer prefix. The owner shares the key privately; session creation returns an ID, not a key.\n\nWorkflow: create session (no body), upload batches starting at sequence 0, consume the stored batches one by one (or read latest/recent frames), then delete the session. Try it out makes REAL requests, including creation and deletion. Your key is not saved across reloads.\n\nBatch size is flexible: 1–300 frames and at most 1.5 MiB of UTF-8 JSON per request. Send all available players in each frame. No gzip, multipart or JSONL-file uploads on these endpoints.\n\nEvery newly accepted batch is ALSO stored durably in SQLite under its session ID and sequence (up to 768 MiB of frames per session). Consumers read stored batches one by one with GET /batches/next?after={lastSequence}, so nothing is lost between polls. Stored batches are deleted with their session. The /latest and /frames endpoints still read a bounded live tail of the latest 300 frames AND 1.5 MiB (plus metadata/32 retry receipts). Idle expiry: 15 minutes without a newly accepted upload; absolute expiry: 2 hours. Reads/retries do not extend expiry. Four active sessions maximum. Global limits: 1,200 non-documentation/non-health requests per minute; after 30 failed authentications per minute, further failures return 429. Cloudflare quotas also apply. All key holders can access/delete known sessions. Use consented diagnostic data only.' },
   servers: [{ url: '/', description: 'This API instance (same origin)' }],
   security: [{ bearerAuth: [] }],
   tags: [{ name: 'Status', description: 'Public health/configuration status.' },
     { name: 'Sessions', description: 'Create and delete shared diagnostic sessions.' },
-    { name: 'Frames', description: 'Upload original tracking observations and inspect the live buffer.' }],
+    { name: 'Frames', description: 'Upload original tracking observations and inspect the live buffer.' },
+    { name: 'Batches', description: 'Read the durable per-session batch archive one batch at a time.' }],
   paths: {
     '/health': { get: { tags: ['Status'], operationId: 'getHealth', summary: 'Check backend health', security: [],
       description: 'Public configuration/readiness check. Does not read the session database or return tracking data.',
@@ -73,13 +80,26 @@ export const openApi = {
         description: 'sequence is the BATCH number, not a frame number. Start at 0; increment for each newly accepted batch. Keep frameNum and videoTimeMs strictly increasing within/across new batches. After an uncertain response, retry the exact same sequence/content. The last 32 receipts support duplicate=true without double-counting. Parsed JSON property order is part of the retry hash; whitespace is not.\n\nAll included players require jerseyNum; trackId is optional metadata, never a replacement. Coordinates must be pitch metres, not pixels. Extra provider fields are preserved; all numbers must be finite and JSON nesting cannot exceed 64 levels. Match ID cannot change within one session.\n\n409 codes: SEQUENCE_CONFLICT (changed/skipped/old sequence), FRAME_OVERLAP, MATCH_CHANGED, UPLOAD_IN_PROGRESS. For an in-flight upload, retry the same batch later. Validation is atomic: no partial batch commits.',
         parameters: [sessionParameter], requestBody: { required: true, description: 'Uncompressed JSON envelope; 1–300 frames and at most 1.5 MiB total.',
           content: content(ref('Batch'), { sequence: 0, frames: [frameExample] }) },
-        responses: { '200': ok('Receipt', 'Accepted new batch, or replayed receipt with duplicate=true.', receiptExample), ...commonErrors(), ...errorResponses(400, 408, 409, 413, 415, 422) } },
+        responses: { '200': ok('Receipt', 'Accepted new batch, or replayed receipt with duplicate=true.', receiptExample), ...commonErrors(), ...errorResponses(400, 408, 409, 413, 415, 422, 507) } },
       get: { tags: ['Frames'], operationId: 'getRecentFrames', summary: 'Read recent retained frames',
         description: 'Returns a bounded tail, oldest first. Not full-match history. Fewer frames may be returned due to the byte cap. GET does not extend expiry.',
         parameters: [sessionParameter, { name: 'limit', in: 'query', required: false, description: 'Maximum frames to return.',
           schema: { type: 'integer', minimum: 1, maximum: CV_LIMITS.retainedFrames, default: 30 }, example: 30 }],
         responses: { '200': ok('Recent', 'Recent original frames and session metadata.', { ...activeExample, frames: [frameExample] }), ...commonErrors(), ...errorResponses(400) } }
-    }
+    },
+    '/api/cv/sessions/{sessionId}/batches': { get: { tags: ['Batches'], operationId: 'listBatches', summary: 'List stored batches (no frames)',
+      description: 'Summaries of archived batches in sequence order, after the optional cursor. Use it to see what is available; fetch frames with /batches/next or /batches/{sequence}. GET does not extend expiry.',
+      parameters: [sessionParameter, afterParameter, { name: 'limit', in: 'query', required: false, description: 'Maximum summaries to return.',
+        schema: { type: 'integer', minimum: 1, maximum: CV_LIMITS.batchListLimit, default: CV_LIMITS.batchListLimit }, example: 20 }],
+      responses: { '200': ok('BatchList', 'Session metadata and stored batch summaries.', { ...activeExample, batches: [batchSummaryExample] }), ...commonErrors(), ...errorResponses(400) } } },
+    '/api/cv/sessions/{sessionId}/batches/next': { get: { tags: ['Batches'], operationId: 'getNextBatch', summary: 'Read the next stored batch after a cursor',
+      description: 'Returns the first stored batch whose sequence is greater than after (omit after for the first batch). batch is null when nothing newer has been uploaded yet: wait and ask again with the same cursor. After processing a batch, call again with after = batch.sequence. frameOffset = frames accepted before this batch, so gaps (e.g. batches accepted before archiving existed) are detectable.',
+      parameters: [sessionParameter, afterParameter],
+      responses: { '200': ok('BatchRead', 'Session metadata plus the next batch, or batch=null.', { ...activeExample, batch: { ...batchSummaryExample, frames: [frameExample] } }), ...commonErrors(), ...errorResponses(400) } } },
+    '/api/cv/sessions/{sessionId}/batches/{sequence}': { get: { tags: ['Batches'], operationId: 'getBatch', summary: 'Read one stored batch by sequence',
+      description: 'Returns the exact frames uploaded with this batch sequence. 404 BATCH_NOT_FOUND if that sequence has not been uploaded (or predates archiving).',
+      parameters: [sessionParameter, { name: 'sequence', in: 'path', required: true, description: 'Batch sequence number.', schema: nonnegative, example: 0 }],
+      responses: { '200': ok('BatchRead', 'Session metadata plus the requested batch.', { ...activeExample, batch: { ...batchSummaryExample, frames: [frameExample] } }), ...commonErrors(), ...errorResponses(400) } } }
   },
   components: {
     securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer',
@@ -107,11 +127,21 @@ export const openApi = {
         properties: { sequence: { ...nonnegative, description: 'Batch sequence starting at 0. Reuse for identical retries.' },
           frames: { type: 'array', minItems: 1, maxItems: CV_LIMITS.batchFrames, items: ref('Frame') } },
         examples: [{ sequence: 0, frames: [frameExample] }] },
-      Session: { type: 'object', required: ['sessionId', 'createdAt', 'expiresAt', 'idleExpiresAt', 'receivedAt', 'lastSequence', 'receivedFrames', 'retainedFrames', 'warnings'],
+      Session: { type: 'object', required: ['sessionId', 'createdAt', 'expiresAt', 'idleExpiresAt', 'receivedAt', 'lastSequence', 'receivedFrames', 'retainedFrames', 'warnings', 'storedBatches', 'archivedBytes'],
         properties: { sessionId: { type: 'string', pattern: '^[a-f0-9]{32}$' }, createdAt: dateTime, expiresAt: dateTime, idleExpiresAt: dateTime,
           receivedAt: { anyOf: [dateTime, { type: 'null' }] }, lastSequence: { anyOf: [nonnegative, { type: 'null' }] },
           receivedFrames: { ...nonnegative, description: 'Total accepted frames, including those evicted from the buffer; retries do not increase it.' },
-          retainedFrames: { type: 'integer', minimum: 0, maximum: CV_LIMITS.retainedFrames }, warnings }, examples: [sessionExample] },
+          retainedFrames: { type: 'integer', minimum: 0, maximum: CV_LIMITS.retainedFrames }, warnings,
+          storedBatches: { ...nonnegative, description: 'Batches stored durably in the session archive.' },
+          archivedBytes: { type: 'integer', minimum: 0, maximum: CV_LIMITS.archiveBytes, description: 'UTF-8 bytes of archived frame JSON; uploads beyond 768 MiB return 507 ARCHIVE_FULL.' } }, examples: [sessionExample] },
+      BatchSummary: { type: 'object', required: ['sequence', 'frameOffset', 'frameCount', 'firstFrameNum', 'lastFrameNum', 'firstVideoTimeMs', 'lastVideoTimeMs', 'bytes', 'receivedAt'],
+        properties: { sequence: nonnegative, frameOffset: { ...nonnegative, description: 'Frames accepted in this session before this batch.' },
+          frameCount: { type: 'integer', minimum: 1, maximum: CV_LIMITS.batchFrames }, firstFrameNum: nonnegative, lastFrameNum: nonnegative,
+          firstVideoTimeMs: { type: 'number', minimum: 0 }, lastVideoTimeMs: { type: 'number', minimum: 0 }, bytes: nonnegative, receivedAt: dateTime },
+        examples: [batchSummaryExample] },
+      StoredBatch: { allOf: [ref('BatchSummary'), { type: 'object', required: ['frames'], properties: { frames: { type: 'array', minItems: 1, maxItems: CV_LIMITS.batchFrames, items: ref('Frame') } } }] },
+      BatchList: { allOf: [ref('Session'), { type: 'object', required: ['batches'], properties: { batches: { type: 'array', maxItems: CV_LIMITS.batchListLimit, items: ref('BatchSummary') } } }] },
+      BatchRead: { allOf: [ref('Session'), { type: 'object', required: ['batch'], properties: { batch: { anyOf: [ref('StoredBatch'), { type: 'null' }] } } }] },
       Latest: { allOf: [ref('Session'), { type: 'object', required: ['frame'], properties: { frame: { anyOf: [ref('Frame'), { type: 'null' }] } } }] },
       Recent: { allOf: [ref('Session'), { type: 'object', required: ['frames'], properties: { frames: { type: 'array', maxItems: CV_LIMITS.retainedFrames, items: ref('Frame') } } }] },
       Receipt: { type: 'object', required: ['sessionId', 'sequence', 'acceptedFrames', 'receivedFrames', 'receivedAt', 'warnings', 'duplicate'],
@@ -122,7 +152,7 @@ export const openApi = {
       Health: { type: 'object', required: ['status', 'service', 'storage'], properties: {
         status: { type: 'string', const: 'ok' }, service: { type: 'string', const: 'cv-diagnostic-api' }, storage: { type: 'string', const: 'durable-sqlite' } } },
       Error: { type: 'object', required: ['error'], properties: { error: { type: 'object', required: ['code', 'message'],
-        properties: { code: { type: 'string', description: 'Machine-readable code. Also possible: INVALID_BATCH, INVALID_JSON_VALUE, UNSUPPORTED_ENCODING, AUTH_RATE_LIMITED, SESSION_LIMIT, FRAME_OVERLAP, MATCH_CHANGED, UPLOAD_IN_PROGRESS, UNEXPECTED_BODY, INVALID_LIMIT, METHOD_NOT_ALLOWED.' }, message: { type: 'string' } } } } }
+        properties: { code: { type: 'string', description: 'Machine-readable code. Also possible: BATCH_NOT_FOUND, INVALID_QUERY, ARCHIVE_FULL, INVALID_BATCH, INVALID_JSON_VALUE, UNSUPPORTED_ENCODING, AUTH_RATE_LIMITED, SESSION_LIMIT, FRAME_OVERLAP, MATCH_CHANGED, UPLOAD_IN_PROGRESS, UNEXPECTED_BODY, INVALID_LIMIT, METHOD_NOT_ALLOWED.' }, message: { type: 'string' } } } } }
     }
   }
 };

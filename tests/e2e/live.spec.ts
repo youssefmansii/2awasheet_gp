@@ -4,16 +4,28 @@ const key = 'local-test-only-key-0123456789abcdef';
 const base = 'https://tracking-cv-api.youssefmansi2.workers.dev';
 const frame = (n: number) => ({ frameNum: n, videoTimeMs: n * 100, period: 1, periodGameClockTime: n / 10,
   homePlayers: [{ jerseyNum: '10', x: n * 0.5, y: 0, confidence: 'HIGH', visibility: 'VISIBLE' }], awayPlayers: [], balls: [] });
-const snapshot = (start: number, count: number, total = start + count) => ({ sessionId: id, receivedFrames: total,
-  retainedFrames: count, lastSequence: 0, receivedAt: new Date().toISOString(), warnings: [],
-  frames: Array.from({ length: count }, (_, i) => frame(start + i)) });
+const frames = (start: number, count: number) => Array.from({ length: count }, (_, i) => frame(start + i));
+type Frame = Record<string, unknown> & { frameNum: number; videoTimeMs: number };
+/** Mock of the server's durable batch archive: GET /batches/next?after=N returns the next stored batch, or batch=null. */
+function archive(batches: Frame[][], firstOffset = 0) {
+  return (url: string) => {
+    const after = Number(new URL(url).searchParams.get('after'));
+    let offset = firstOffset;
+    const stored = batches.map((list, sequence) => { const b = { sequence, frameOffset: offset, frames: list }; offset += list.length; return b; });
+    const next = stored.find((b) => b.sequence > after) ?? null;
+    return JSON.stringify({ sessionId: id, receivedFrames: offset, retainedFrames: 0, lastSequence: stored.length ? stored.length - 1 : null,
+      receivedAt: new Date().toISOString(), warnings: [], storedBatches: stored.length, archivedBytes: 1,
+      batch: next && { ...next, frameCount: next.frames.length, firstFrameNum: next.frames[0]!.frameNum, lastFrameNum: next.frames.at(-1)!.frameNum,
+        firstVideoTimeMs: next.frames[0]!.videoTimeMs, lastVideoTimeMs: next.frames.at(-1)!.videoTimeMs, bytes: 1, receivedAt: new Date().toISOString() } });
+  };
+}
 
 test('one-minute GET interval connects immediately and keeps buffered playback running', async ({ page, context }) => {
-  let polls = 0;
+  let polls = 0; const serve = archive([frames(0, 10)]);
   await context.route(base + '/**', (route) => {
     polls++;
     return route.fulfill({ status: 200, contentType: 'application/json',
-      headers: { 'Access-Control-Allow-Origin': 'http://127.0.0.1:5173' }, body: JSON.stringify(snapshot(0, 10)) });
+      headers: { 'Access-Control-Allow-Origin': 'http://127.0.0.1:5173' }, body: serve(route.request().url()) });
   });
   await page.goto('/'); await page.getByRole('button', { name: 'Live API', exact: true }).click();
   const interval = page.getByLabel('GET interval');
@@ -25,21 +37,21 @@ test('one-minute GET interval connects immediately and keeps buffered playback r
   await expect(page.getByRole('status').first()).toContainText('10 frames played');
   await expect(page.getByRole('alert')).toHaveCount(0);
   await page.waitForTimeout(1100); // Must not silently fall back to the default one-second poll.
-  expect(polls).toBe(1);
+  expect(polls).toBe(2); // The stored batch, then one immediate check for a newer one; then the 1-minute wait.
   await page.getByRole('button', { name: 'Stop receiving' }).click();
 });
 
-test('live API receives overlapping snapshots once and stops without deleting producer data', async ({ page, context }, testInfo) => {
-  const methods: string[] = []; let polls = 0; let advance = false;
+test('live API consumes stored batches one by one and stops without deleting producer data', async ({ page, context }, testInfo) => {
+  const methods: string[] = []; let polls = 0; const stored = [frames(0, 10)]; const serve = archive(stored);
   await context.route(base + '/**', async (route) => {
     const req = route.request(); methods.push(req.method());
     if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: {
       'Access-Control-Allow-Origin': 'http://127.0.0.1:5173', 'Access-Control-Allow-Headers': 'Authorization', 'Access-Control-Allow-Methods': 'GET'
     } });
-    expect(req.method()).toBe('GET'); expect(req.url()).toBe(base + '/api/cv/sessions/' + id + '/frames?limit=300');
+    expect(req.method()).toBe('GET'); expect(req.url()).toMatch(new RegExp(`^${base}/api/cv/sessions/${id}/batches/next\\?after=-?\\d+$`));
     expect(req.headers().authorization).toBe('Bearer ' + key); polls++;
     await route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': 'http://127.0.0.1:5173' },
-      body: JSON.stringify(advance ? snapshot(5, 10) : snapshot(0, 10)) });
+      body: serve(req.url()) });
   });
   await page.goto('/');
   await expect(page.getByRole('button', { name: 'Local replay', exact: true })).toBeVisible();
@@ -53,7 +65,7 @@ test('live API receives overlapping snapshots once and stops without deleting pr
   const table = page.getByRole('table', { name: /Live workload and output indicators/ });
   await expect(table).toBeVisible();
   await expect(table.locator('tbody tr').filter({ hasText: '#10' })).toHaveCount(1);
-  advance = true;
+  stored.push(frames(10, 5));
   await expect(page.getByRole('status').first()).toContainText('15 frames observed');
   const before = polls; await expect.poll(() => polls).toBeGreaterThan(before);
   await expect(page.getByRole('status').first()).toContainText('15 frames observed');
@@ -88,10 +100,11 @@ test('live API rejects invalid inputs and reports auth errors without exposing t
 });
 
 test('live API reports late join and absent clocks instead of complete match workload', async ({ page, context }) => {
-  const data = snapshot(100, 5);
-  const withoutClocks = data.frames.map((frame) => { const copy: Record<string, unknown> = { ...frame }; delete copy.periodGameClockTime; return copy; });
+  const withoutClocks = frames(100, 5).map((frame) => { const copy: Frame = { ...frame }; delete copy.periodGameClockTime; return copy; });
+  // Batches before frame 100 predate the archive: frameOffset 100 reveals the missing history.
+  const serve = archive([withoutClocks], 100);
   await context.route(base + '/**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
-    headers: { 'Access-Control-Allow-Origin': 'http://127.0.0.1:5173' }, body: JSON.stringify({ ...data, frames: withoutClocks }) }));
+    headers: { 'Access-Control-Allow-Origin': 'http://127.0.0.1:5173' }, body: serve(route.request().url()) }));
   await page.goto('/'); await page.getByRole('button', { name: 'Live API', exact: true }).click();
   await page.getByLabel('Session ID', { exact: true }).fill(id);
   await page.getByLabel('API key (without Bearer)').fill(key);
@@ -104,14 +117,11 @@ test('live API reports late join and absent clocks instead of complete match wor
 
 test('plays a 300-frame batch over ten seconds, pauses, waits, and resumes with the next batch', async ({ page, context }, testInfo) => {
   const errors: string[] = []; page.on('pageerror', (error) => errors.push(error.message));
-  let nextBatch = false;
-  await context.route(base + '/**', (route) => {
-    const input = nextBatch ? snapshot(240, 90, 330) : snapshot(0, 300);
-    input.frames = input.frames.map((f) => ({ ...f, videoTimeMs: f.frameNum * 1000 / 30,
-      periodGameClockTime: f.frameNum / 30, homePlayers: [{ ...f.homePlayers[0]!, x: f.frameNum / 10 }] }));
-    return route.fulfill({ status: 200, contentType: 'application/json',
-      headers: { 'Access-Control-Allow-Origin': 'http://127.0.0.1:5173' }, body: JSON.stringify(input) });
-  });
+  const at30 = (list: ReturnType<typeof frames>) => list.map((f) => ({ ...f, videoTimeMs: f.frameNum * 1000 / 30,
+    periodGameClockTime: f.frameNum / 30, homePlayers: [{ ...f.homePlayers[0]!, x: f.frameNum / 10 }] }));
+  const stored = [at30(frames(0, 300))]; const serve = archive(stored);
+  await context.route(base + '/**', (route) => route.fulfill({ status: 200, contentType: 'application/json',
+    headers: { 'Access-Control-Allow-Origin': 'http://127.0.0.1:5173' }, body: serve(route.request().url()) }));
   await page.goto('/'); await page.getByRole('button', { name: 'Live API', exact: true }).click();
   await page.getByLabel('Session ID', { exact: true }).fill(id);
   await page.getByLabel('API key (without Bearer)').fill(key);
@@ -138,7 +148,7 @@ test('plays a 300-frame batch over ten seconds, pauses, waits, and resumes with 
   await expect(sourceFrame).toContainText('#299');
   await page.waitForTimeout(300);
   await expect(sourceFrame).toContainText('#299');
-  nextBatch = true;
+  stored.push(at30(frames(300, 30)));
   await expect(status).toContainText('330 frames played');
   await expect(sourceFrame).toContainText('#329');
   await expect(table).toBeVisible();

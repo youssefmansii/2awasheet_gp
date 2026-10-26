@@ -1,6 +1,11 @@
 import { CV_LIMITS, CvError } from '../../api/src/cv-types';
 
 export function json(status: number, body: unknown): Response {
+  return jsonText(status, JSON.stringify(body));
+}
+
+/** For bodies already serialized as JSON text (e.g. stored batch frames spliced into an envelope). */
+export function jsonText(status: number, body: string): Response {
   const headers = new Headers({ 'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY',
     'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'",
@@ -8,7 +13,7 @@ export function json(status: number, body: unknown): Response {
     'Permissions-Policy': 'camera=(), microphone=(), geolocation=()' });
   if (status === 401) headers.set('WWW-Authenticate', 'Bearer');
   if (status === 429) headers.set('Retry-After', '60');
-  return new Response(JSON.stringify(body), { status, headers });
+  return new Response(body, { status, headers });
 }
 
 export function failure(error: unknown): Response {

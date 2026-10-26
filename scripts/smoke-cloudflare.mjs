@@ -64,7 +64,7 @@ try {
       if (request.url().startsWith('http') && !request.url().startsWith(base + '/')) external.push(request.url());
     });
     await page.goto(base + '/docs?url=https://example.invalid/ignored-spec.json');
-    await expect(page.locator('.opblock')).toHaveCount(6);
+    await expect(page.locator('.opblock')).toHaveCount(9);
     await page.screenshot({ path: 'test-results/swagger-docs.png', fullPage: true });
     await page.getByRole('button', { name: 'Authorize', exact: true }).click();
     const dialog = page.locator('.dialog-ux');
@@ -81,10 +81,10 @@ try {
     assert.equal((await fetch(base + '/api/cv/sessions/' + browserSession.sessionId, { method: 'DELETE', headers })).status, 200);
     assert.deepEqual(external, []); assert.deepEqual(errors, []);
     await page.reload();
-    await expect(page.locator('.opblock')).toHaveCount(6);
+    await expect(page.locator('.opblock')).toHaveCount(9);
     await page.getByRole('button', { name: 'Authorize', exact: true }).click();
     await expect(page.locator('.dialog-ux input')).toHaveValue('');
-    console.info('Swagger browser passed: six endpoints, real Authorize/Try it out, no external requests, no console errors, no persisted authorization.');
+    console.info('Swagger browser passed: nine endpoints, real Authorize/Try it out, no external requests, no console errors, no persisted authorization.');
   } finally { await browser.close(); }
   assert.equal((await fetch(base + '/api/cv/sessions', { method: 'POST' })).status, 401);
   const created = await fetch(base + '/api/cv/sessions', { method: 'POST', headers });
@@ -121,14 +121,41 @@ try {
   assert.ok(concurrent.every((r) => r.status === 200));
   const receipts = await Promise.all(concurrent.map((r) => r.json()));
   assert.equal(receipts.filter((r) => r.duplicate).length, 1);
+  // Durable batch archive: every accepted batch is stored and read back one by one by sequence.
+  const nextBatch = async (after) => (await fetch(base + path + `/batches/next?after=${after}`, { headers })).json();
+  const b0 = await nextBatch(-1);
+  assert.equal(b0.batch.sequence, 0); assert.equal(b0.batch.frameOffset, 0); assert.deepEqual(b0.batch.frames, body.frames);
+  assert.equal(b0.storedBatches, 2);
+  const b1 = await nextBatch(0);
+  assert.equal(b1.batch.sequence, 1); assert.equal(b1.batch.frameOffset, 5); assert.deepEqual(b1.batch.frames, batch1.frames);
+  assert.equal((await nextBatch(1)).batch, null);
+  assert.deepEqual((await (await fetch(base + path + '/batches/1', { headers })).json()).batch.frames, batch1.frames);
+  const missingBatch = await fetch(base + path + '/batches/7', { headers });
+  assert.equal(missingBatch.status, 404); assert.equal((await missingBatch.json()).error.code, 'BATCH_NOT_FOUND');
+  assert.equal((await fetch(base + path + '/batches/next?after=-2', { headers })).status, 400);
+  assert.equal((await fetch(base + path + '/batches?limit=101', { headers })).status, 400);
+  const corsBatch = await fetch(base + path + '/batches/next?after=0', { headers: { ...headers, Origin: frontend } });
+  assert.equal(corsBatch.status, 200); assert.equal(corsBatch.headers.get('Access-Control-Allow-Origin'), frontend);
   await stop(); await start();
+  // Archive survives restart.
+  assert.deepEqual((await nextBatch(0)).batch.frames, batch1.frames);
   const restored = await fetch(base + path + '/latest', { headers }); assert.equal(restored.status, 200);
   const snapshot = await restored.json(); assert.equal(snapshot.receivedFrames, 6); assert.deepEqual(snapshot.frame, frame(5));
   assert.equal((await (await post(path + '/frames', batch1)).json()).duplicate, true);
   assert.equal((await post(path + '/frames', { sequence: 2, frames: Array.from({ length: 301 }, (_, i) => frame(i + 6)) })).status, 422);
   assert.equal((await post(path + '/frames', { sequence: 2, frames: Array.from({ length: 300 }, (_, i) => frame(i + 6)) })).status, 200);
+  // Upload many batches back-to-back: the tail buffer overwrites, but the archive keeps every batch.
+  for (let seq = 3; seq < 9; seq++) {
+    assert.equal((await post(path + '/frames', { sequence: seq, frames: Array.from({ length: 100 }, (_, i) => frame(306 + (seq - 3) * 100 + i)) })).status, 200);
+  }
+  const listing = await (await fetch(base + path + '/batches?after=-1', { headers })).json();
+  assert.deepEqual(listing.batches.map((b) => b.sequence), [0, 1, 2, 3, 4, 5, 6, 7, 8]);
+  assert.ok(listing.batches.every((b) => !('frames' in b)));
+  let cursor = -1; let consumed = 0;
+  for (;;) { const r = await nextBatch(cursor); if (!r.batch) break; assert.equal(r.batch.frameOffset, consumed); consumed += r.batch.frames.length; cursor = r.batch.sequence; }
+  assert.equal(consumed, 906); assert.equal(cursor, 8);
   const tail = await fetch(base + path + '/frames?limit=300', { headers });
-  const data = await tail.json(); assert.equal(data.retainedFrames, 300); assert.equal(data.frames[0].frameNum, 6);
+  const data = await tail.json(); assert.equal(data.retainedFrames, 300); assert.equal(data.frames[0].frameNum, 606);
   assert.equal(tail.headers.get('Cache-Control'), 'no-store');
   assert.equal(tail.headers.get('X-Content-Type-Options'), 'nosniff');
   assert.equal((await fetch(base + '/api/live/sessions', { method: 'POST', headers })).status, 404);
@@ -136,9 +163,10 @@ try {
   assert.equal((await fetch(base + '/api/cv/sessions', { method: 'POST', headers })).status, 429);
   assert.equal((await fetch(base + path, { method: 'DELETE', headers })).status, 200);
   assert.equal((await fetch(base + path + '/latest', { headers })).status, 404);
+  assert.equal((await fetch(base + path + '/batches/0', { headers })).status, 404);
   for (let i = 0; i < 30; i++) await fetch(base + path + '/latest');
   assert.equal((await fetch(base + path + '/latest')).status, 429);
   assert.equal((await fetch(base + '/health')).status, 200);
-  console.info('Cloudflare runtime smoke passed: auth, flexible batches, validation, atomic retries, SQLite restart recovery, retention, deletion and limits.');
+  console.info('Cloudflare runtime smoke passed: auth, flexible batches, durable one-by-one batch archive, validation, atomic retries, SQLite restart recovery, retention, deletion and limits.');
   console.info(`Local test state retained at ${directory}; no match captures or real credentials.`);
 } finally { await stop(); }

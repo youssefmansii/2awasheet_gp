@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { newSession, acceptBatch, metadata, expired } from '../../../apps/cloudflare/src/session';
+import { newSession, acceptBatch, metadata, expired, restoreSession, batchSummary } from '../../../apps/cloudflare/src/session';
 import { validateCvBatch } from '../../../apps/api/src/cv-validation';
 import { CV_LIMITS } from '../../../apps/api/src/cv-types';
 import { readFileSync, existsSync } from 'node:fs';
@@ -83,5 +83,31 @@ describe('Cloudflare durable session state', () => {
       const f = { ...frame(5), [key]: [{ trackId: 1, jerseyNum: null, x: 1, y: 2 }] };
       expect(() => validateCvBatch({ sequence: 1, frames: [f] })).toThrow('jerseyNum is required');
     }
+  });
+  it('counts archived batches/bytes exactly, never for duplicates, and restores pre-archive sessions', () => {
+    const session = newSession('9'.repeat(32), 0);
+    const first = batch(0, 0, 3);
+    acceptBatch(session, first, 1);
+    expect(session.storedBatches).toBe(1);
+    expect(session.archivedBytes).toBe(Buffer.byteLength(JSON.stringify(first.frames)));
+    acceptBatch(session, batch(0, 0, 3), 2);
+    expect(session.storedBatches).toBe(1);
+    acceptBatch(session, batch(1, 3, 2), 3);
+    expect(metadata(session)).toMatchObject({ storedBatches: 2, receivedFrames: 5 });
+    const legacy = JSON.stringify({ ...session, storedBatches: undefined, archivedBytes: undefined });
+    const { storedBatches, archivedBytes, ...old } = JSON.parse(legacy);
+    expect(storedBatches).toBeUndefined(); expect(archivedBytes).toBeUndefined();
+    expect(restoreSession(JSON.stringify(old))).toMatchObject({ storedBatches: 0, archivedBytes: 0, receivedFrames: 5 });
+  });
+  it('rejects uploads atomically once the per-session archive is full', () => {
+    const session = newSession('8'.repeat(32), 0);
+    session.archivedBytes = CV_LIMITS.archiveBytes - 10;
+    expect(() => acceptBatch(session, batch(0, 0, 1), 1)).toThrow('stored-batch limit');
+    expect(session.receivedFrames).toBe(0);
+    expect(session.lastSequence).toBeNull();
+  });
+  it('summarizes a batch with its frame offset and source ranges', () => {
+    expect(batchSummary(batch(4, 10, 3), 10, 99, '2026-10-18T12:00:00.000Z')).toEqual({ sequence: 4, frameOffset: 10, frameCount: 3,
+      firstFrameNum: 10, lastFrameNum: 12, firstVideoTimeMs: 400, lastVideoTimeMs: 480, bytes: 99, receivedAt: '2026-10-18T12:00:00.000Z' });
   });
 });
