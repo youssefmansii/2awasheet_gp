@@ -14,18 +14,18 @@ Use HTTPS. Every tracking API endpoint except `/health` needs `Authorization: Be
 
 ### Interactive Swagger documentation
 
-Open [Swagger UI](https://tracking-cv-api.youssefmansi2.workers.dev/docs). The [OpenAPI 3.1 specification](https://tracking-cv-api.youssefmansi2.workers.dev/openapi.json) can also be imported into Postman or other OpenAPI clients. The maintained source is `apps/cloudflare/src/openapi.ts`; it describes all six operations, schemas, request/response examples, error statuses, sequence rules and retention.
+Open [Swagger UI](https://tracking-cv-api.youssefmansi2.workers.dev/docs). The [OpenAPI 3.1 specification](https://tracking-cv-api.youssefmansi2.workers.dev/openapi.json) can also be imported into Postman or other OpenAPI clients. The maintained source is `apps/cloudflare/src/openapi.ts`; it describes all nine operations, schemas, request/response examples, error statuses, sequence rules and retention.
 
 1. Click **Authorize** and enter only your private key value, without `Bearer `.
 2. Expand `POST /api/cv/sessions`, select **Try it out**, then **Execute**. Send no body.
 3. Copy the returned session ID into the frame endpoints. Upload a batch with sequence zero, then read latest/recent frames. Use a new increasing sequence for each new batch; reuse the same sequence/content for retries.
 4. Delete your test session when finished, and **Logout** in the authorization dialog or close/reload the page.
 
-Try it out performs real operations against the same API origin, including deletion. Swagger request examples/cURL snippets can display the key you enter: do not screenshot or share those authenticated snippets. Authorization is held only in page memory and not persisted across reloads. The API key, shared-key access model and frame validation remain unchanged. Explicit frontend origins can now GET session frames/latest; cross-origin writes remain blocked.
+Try it out performs real operations against the same API origin, including deletion. Swagger request examples/cURL snippets can display the key you enter: do not screenshot or share those authenticated snippets. Authorization is held only in page memory and not persisted across reloads. The API key, shared-key access model and frame validation remain unchanged. Explicit frontend origins can now GET session frames/latest/batches; cross-origin writes remain blocked.
 
 Swagger UI 5.33.3 assets are pinned, copied locally by the package's dev/build/deploy commands, and served from `/docs-assets/`; no CDN, external validator, URL-config overrides or telemetry scripts are used by the page. The package's install scripts, including its Scarf dependency's install-time telemetry, remain disabled. The docs-only CSP allows same-origin scripts/connections and inline styles required by Swagger; API JSON retains its strict `default-src 'none'` policy. Generated `apps/cloudflare/public/` is ignored by Git. Its contents are a build artifact, not a place to add match files. Only three known asset paths are served publicly.
 
-`pnpm test:cloudflare` also opens an isolated headless browser, verifies the six operations, Authorize/Try it out against a random local test key, no external HTTP requests/console errors, and cleared authorization on reload. Chrome DevTools MCP is not configured here; Playwright provides the browser check. A key-free screenshot is saved in ignored `test-results/swagger-docs.png`.
+`pnpm test:cloudflare` also opens an isolated headless browser, verifies the nine operations, Authorize/Try it out against a random local test key, no external HTTP requests/console errors, and cleared authorization on reload. Chrome DevTools MCP is not configured here; Playwright provides the browser check. A key-free screenshot is saved in ignored `test-results/swagger-docs.png`.
 
 | Method | Path | Body/result |
 |---|---|---|
@@ -34,6 +34,9 @@ Swagger UI 5.33.3 assets are pinned, copied locally by the package's dev/build/d
 | POST | `/api/cv/sessions/{id}/frames` | `application/json` envelope `{ "sequence": 0, "frames": [...] }`; returns receipt. |
 | GET | `/api/cv/sessions/{id}/latest` | Latest original frame under `frame`, metadata and warnings. |
 | GET | `/api/cv/sessions/{id}/frames?limit=30` | 1–300 retained frames, oldest first. |
+| GET | `/api/cv/sessions/{id}/batches?after=-1&limit=100` | Summaries (no frames) of stored batches with sequence > `after`. |
+| GET | `/api/cv/sessions/{id}/batches/next?after=N` | The first stored batch with sequence > `N` (with its frames), or `batch: null` if none yet. |
+| GET | `/api/cv/sessions/{id}/batches/{sequence}` | One stored batch by sequence; 404 `BATCH_NOT_FOUND` if absent. |
 | DELETE | `/api/cv/sessions/{id}` | Deletes the session; subsequent reads return 404. |
 
 The detailed frame contract and client examples in [RENDER_CV_API.md](RENDER_CV_API.md) also apply; replace the base URL with the deployed Worker URL. No gzip or JSONL-file uploads on this diagnostic interface: send a JSON batch, not multipart or one request per player. The existing local file/chunk simulator is unchanged.
@@ -42,9 +45,25 @@ Batch size is **configurable by the producer**, not fixed to five. Send 1–300 
 
 Responses retain original provider fields and return compatibility warnings for missing match clock/player quality. Missing/invalid jerseys reject the entire batch (422). Malformed JSON is 400; bad media type/encoding 415; oversized bodies 413; expired/missing sessions 404; auth 401; cross-origin browser calls 403; limits 429 with `Retry-After`. No permissive CORS, secrets in URLs, accounts or public frame reads.
 
+## Durable batch archive
+
+Every newly accepted batch is also written, in the same SQLite transaction as the session snapshot, to a `batches` table keyed by `(session_id, sequence)`. Duplicate retries are not stored twice. This is the database to consume the producer's output **one batch at a time** without losing anything to the 300-frame live tail:
+
+```text
+after = -1
+loop:
+  GET /api/cv/sessions/{id}/batches/next?after={after}
+  if batch is null: wait, then ask again with the same cursor
+  else: process batch.frames, then after = batch.sequence (ask again immediately to drain any backlog)
+```
+
+Each stored batch carries `sequence`, `frameOffset` (frames accepted in this session before it, so gaps are detectable), `frameCount`, first/last `frameNum` and `videoTimeMs`, `bytes`, `receivedAt` and the original `frames`. Session metadata now also reports `storedBatches` and `archivedBytes`. Each session may archive up to **768 MiB** of frame JSON (four sessions stay below the 5 GB free SQLite quota); a further upload returns **507 `ARCHIVE_FULL`** and nothing is committed. Batches accepted before this feature was deployed are not in the archive; the first stored batch's `frameOffset` reveals them.
+
+Stored batches live and die with their session: they are deleted on `DELETE /api/cv/sessions/{id}` and when the session expires (15 minutes idle / 2 hours absolute). Consume them within the session's lifetime.
+
 ## Retention and privacy
 
-Unlike the Node server's memory-only buffer, the Cloudflare adapter stores bounded session snapshots in SQLite, so recent frames and retry receipts survive restarts/eviction. Each session retains at most **300 frames AND 1.5 MiB serialized frame data**, plus metadata and 32 receipt hashes/responses. This is a live test buffer, not a match archive.
+Unlike the Node server's memory-only buffer, the Cloudflare adapter stores bounded session snapshots in SQLite, so recent frames and retry receipts survive restarts/eviction. Each session retains at most **300 frames AND 1.5 MiB serialized frame data**, plus metadata and 32 receipt hashes/responses. The `/latest` and `/frames` endpoints read this bounded live buffer; the full upload history is in the batch archive above until the session ends.
 
 Sessions expire after **15 minutes without a newly accepted batch**, or **two hours after creation**, whichever is first. Reads and duplicate retries never extend expiry. Expiry is checked before reads and again at upload commit; an alarm removes expired rows approximately once a minute while sessions remain. Alarm execution can be delayed by the platform. DELETE removes the active row immediately; Cloudflare may retain platform-managed recovery copies under its retention policies. Do not promise immediate physical erasure from backups. Do not send sensitive player data without consent and a cloud-storage retention/access review.
 
@@ -56,7 +75,7 @@ The shared key gives all holders read/write/delete access to known sessions. Lim
 
 At 25 FPS, five-frame batches mean five POSTs/second: **36,000 uploads in two hours**. One viewer GETting once per second adds 7,200: **43,200 Worker requests** plus retries/session operations. Each protected request also invokes the Durable Object, charged against its separate allowance, not as a second public Worker request.
 
-The implementation normally writes one limiter row per protected request and one session row per newly accepted upload. That example is approximately **79,200 SQL row writes**, plus initial schema/session/alarm/deletion overhead. SQLite index accounting and provider metering can add overhead: check actual usage before increasing viewers, test duration or frame rate. GET polling and repeated retries are not free. Expiry alarms add requests and row writes too.
+The implementation normally writes one limiter row per protected request, plus one session row and one archived batch row per newly accepted upload. That example is approximately **115,200 SQL row writes** — above the 100,000/day free allowance, so prefer larger batches (e.g. 25–50 frames) for long runs, plus initial schema/session/alarm/deletion overhead. SQLite index accounting and provider metering can add overhead: check actual usage before increasing viewers, test duration or frame rate. GET polling and repeated retries are not free. Expiry alarms add requests and row writes too.
 
 Published free allowances at implementation time: Workers 100,000 requests/day and 10 ms CPU per invocation; Durable Objects 100,000 requests/day, 13,000 GB-s/day; SQLite 5 million rows read/day, 100,000 rows written/day, 5 GB total storage. These are account-wide/shared with other applications and can change. Reaching one allowance can stop service even if another is available. Request count alone does not guarantee a free or low-latency workload. The front Worker only forwards requests; JSON processing runs inside the Durable Object. Cloud CPU/latency still require real deployed measurement. Do not upgrade to paid without owner approval.
 

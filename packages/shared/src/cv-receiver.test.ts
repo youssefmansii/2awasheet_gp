@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CvReceiver, cvReadUrl } from '../../../apps/web/src/live/cv-receiver';
+import { CvReceiver, cvBatchUrl, cvReadUrl } from '../../../apps/web/src/live/cv-receiver';
 const id = 'a'.repeat(32);
 const frame = (n: number) => ({ frameNum: n, videoTimeMs: n * 100, period: 1, periodGameClockTime: n / 10,
   homePlayers: [{ jerseyNum: '10', x: n * 0.5, y: 0 }], awayPlayers: [], balls: [] });
@@ -58,5 +58,64 @@ describe('CV live receiver', () => {
     const withoutClock: Record<string, unknown> = { ...input.frames[0]! }; delete withoutClock.periodGameClockTime;
     r.consume({ ...input, frames: [withoutClock] });
     expect(r.advance(0).clockComplete).toBe(false);
+  });
+});
+
+const stored = (sequence: number, start: number, count: number, receivedFrames = start + count, frameOffset = start) => ({
+  sessionId: id, receivedFrames, retainedFrames: 0, lastSequence: sequence, receivedAt: '2026-10-18T12:00:00Z', warnings: [],
+  storedBatches: sequence + 1, archivedBytes: 1,
+  batch: { sequence, frameOffset, frameCount: count, firstFrameNum: start, lastFrameNum: start + count - 1,
+    firstVideoTimeMs: start * 100, lastVideoTimeMs: (start + count - 1) * 100, bytes: 1, receivedAt: '2026-10-18T12:00:00Z',
+    frames: Array.from({ length: count }, (_, i) => frame(start + i)) }
+});
+const none = (receivedFrames: number) => ({ sessionId: id, receivedFrames, retainedFrames: 0, lastSequence: null,
+  receivedAt: receivedFrames ? '2026-10-18T12:00:00Z' : null, warnings: [], storedBatches: 0, archivedBytes: 0, batch: null });
+
+describe('CV live receiver: durable batch archive, one by one', () => {
+  it('builds a cursor URL and advances the cursor by batch sequence', () => {
+    expect(cvBatchUrl(id, -1)).toBe(`https://tracking-cv-api.youssefmansi2.workers.dev/api/cv/sessions/${id}/batches/next?after=-1`);
+    expect(() => cvBatchUrl(id, -2)).toThrow();
+    const r = new CvReceiver(id);
+    expect(r.cursor).toBe(-1);
+    expect(r.consumeBatch(none(0)).processedFrames).toBe(0);
+    expect(r.consumeBatch(stored(0, 0, 10)).processedFrames).toBe(10);
+    expect(r.cursor).toBe(0);
+    expect(r.consumeBatch(stored(1, 10, 5)).processedFrames).toBe(15);
+    expect(r.cursor).toBe(1);
+    r.advance(0); const played = r.advance(1500);
+    expect(played.data!.frameNum.at(-1)).toBe(14);
+    expect(played.missingFrames).toBe(0);
+  });
+  it('loses nothing when many batches were uploaded between polls', () => {
+    const r = new CvReceiver(id);
+    // Server already holds 20 batches (2,000 frames) — far beyond the 300-frame tail.
+    for (let s = 0; s < 20; s++) r.consumeBatch(stored(s, s * 100, 100, 2000));
+    const update = r.advance(0);
+    expect(update.processedFrames).toBe(2000);
+    expect(update.missingFrames).toBe(0);
+  });
+  it('applies backpressure instead of overflowing the playback queue', () => {
+    const r = new CvReceiver(id);
+    let s = 0;
+    while (r.canAcceptBatch()) { r.consumeBatch(stored(s, s * 300, 300, 100000)); s++; }
+    expect(r.consumeBatch(none(100000)).bufferedFrames).toBe(CvReceiver.maxQueuedFrames);
+    r.advance(0); r.advance(1e9);
+    expect(r.canAcceptBatch()).toBe(true);
+  });
+  it('flags frames that predate the archive as missing via frameOffset', () => {
+    const r = new CvReceiver(id);
+    expect(r.consumeBatch(stored(3, 50, 5, 55, 50)).missingFrames).toBe(50);
+  });
+  it('rejects replayed, overlapping, inconsistent or wrong-session batches', () => {
+    const r = new CvReceiver(id);
+    r.consumeBatch(stored(0, 0, 5));
+    expect(() => r.consumeBatch(stored(0, 0, 5))).toThrow();
+    expect(() => r.consumeBatch(stored(1, 3, 5))).toThrow();
+    expect(() => r.consumeBatch({ ...stored(1, 5, 5), sessionId: 'b'.repeat(32) })).toThrow();
+    expect(() => r.consumeBatch({ ...stored(1, 5, 5), receivedFrames: 6 })).toThrow();
+    const wrongCount = stored(1, 5, 5); wrongCount.batch.frameCount = 4;
+    expect(() => r.consumeBatch(wrongCount)).toThrow();
+    expect(() => r.consumeBatch({ ...none(5), batch: undefined })).toThrow();
+    expect(r.consumeBatch(stored(1, 5, 5)).processedFrames).toBe(10);
   });
 });

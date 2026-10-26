@@ -1,5 +1,5 @@
 /// <reference lib="webworker" />
-import { CvReceiver, cvReadUrl, type CvViewUpdate } from '../live/cv-receiver';
+import { CvReceiver, cvBatchUrl, cvReadUrl, type CvViewUpdate } from '../live/cv-receiver';
 
 export type CvWorkerMessage = { type: 'update'; update: CvViewUpdate; state: string }
   | { type: 'status'; state: string; message: string } | { type: 'error'; message: string };
@@ -31,12 +31,14 @@ self.onmessage = (event: MessageEvent<{ sessionId: string; key: string; interval
   if ('sessionId' in event.data) void poll(event.data).catch(() => send({ type: 'error', message: 'Live receiver failed. Reconnect to try again.' }));
 };
 async function poll({ sessionId, key, intervalMs }: { sessionId: string; key: string; intervalMs: number }) {
-  const url = cvReadUrl(sessionId);
+  cvReadUrl(sessionId);
   if (!/^[\x21-\x7e]{32,256}$/.test(key) || intervalMs < 250 || intervalMs > 60000) {
     send({ type: 'error', message: 'Enter a valid API key (without Bearer) and polling interval.' }); return;
   }
   const receiver = new CvReceiver(sessionId); let failures = 0;
   const playbackState = (update: CvViewUpdate) => paused ? 'Paused' : update.bufferedFrames ? 'Playing buffered frames' : 'Waiting for next batch';
+  // While the playback queue is full, stop fetching: batches stay safely stored on the server.
+  const backpressureMs = 250;
   let playbackNow = 0; let lastTick = performance.now();
   const timer = setInterval(() => {
     const now = performance.now();
@@ -49,19 +51,22 @@ async function poll({ sessionId, key, intervalMs }: { sessionId: string; key: st
   try {
   while (true) {
     let delay = intervalMs;
+    if (!receiver.canAcceptBatch()) { await new Promise((resolve) => setTimeout(resolve, backpressureMs)); continue; }
     try {
-      const response = await fetch(url, { method: 'GET', headers: { Authorization: `Bearer ${key}` },
+      const response = await fetch(cvBatchUrl(sessionId, receiver.cursor), { method: 'GET', headers: { Authorization: `Bearer ${key}` },
         cache: 'no-store', credentials: 'omit', redirect: 'error', signal: AbortSignal.timeout(10000) });
       if (friendly[response.status]) { send({ type: 'error', message: friendly[response.status]! }); return; }
       if (!response.ok) {
         delay = response.status === 429 ? Math.max(1000, Math.min(60000, Number(response.headers.get('Retry-After')) * 1000 || 60000)) : Math.min(30000, 1000 * 2 ** Math.min(++failures, 5));
         send({ type: 'status', state: 'Reconnecting', message: response.status === 429 ? 'API rate limit reached; waiting before retrying.' : 'API unavailable; retrying with backoff.' });
       } else {
-        let update: CvViewUpdate;
-        try { update = receiver.consume(await readSnapshot(response)); }
+        let update: CvViewUpdate; const before = receiver.cursor;
+        try { update = receiver.consumeBatch(await readSnapshot(response)); }
         catch (error) { send({ type: 'error', message: error instanceof Error && error.message.startsWith('Playback buffer is full.')
           ? error.message : 'Invalid API tracking response. Check the CV output and session, then reconnect.' }); return; }
         failures = 0;
+        // A batch arrived: ask for the next one right away to drain any stored backlog, one batch at a time.
+        if (receiver.cursor !== before) delay = 0;
         send({ type: 'update', update, state: playbackState(update) });
       }
     } catch {

@@ -20,4 +20,14 @@ describe('read-only frontend CORS', () => {
     expect(withReadCors(new Response('{}', { status: 401 }), 'http://localhost:5173').headers.get('Access-Control-Allow-Origin')).toBe('http://localhost:5173');
     expect(withReadCors(new Response('{}'), 'http://localhost:5173').headers.has('Access-Control-Allow-Credentials')).toBe(false);
   });
+  it('allows the read-only batch archive endpoints, and nothing else under batches', () => {
+    const origin = { Origin: 'http://localhost:5173' };
+    const base = `https://api.example/api/cv/sessions/${'a'.repeat(32)}`;
+    for (const tail of ['/batches', '/batches?after=3', '/batches/next?after=-1', '/batches/12']) {
+      expect(allowedReadOrigin(new Request(base + tail, { headers: origin }), allowed)).toBe('http://localhost:5173');
+    }
+    for (const tail of ['/batches/x', '/batches/next/1', '/batches/']) {
+      expect(allowedReadOrigin(new Request(base + tail, { headers: origin }), allowed)).toBeNull();
+    }
+  });
 });

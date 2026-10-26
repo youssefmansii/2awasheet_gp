@@ -1,6 +1,6 @@
 import { CvError } from '../../api/src/cv-types';
 import { failure } from './http';
-const readPath = /^\/api\/cv\/sessions\/[a-f0-9]{32}\/(frames|latest)$/;
+const readPath = /^\/api\/cv\/sessions\/[a-f0-9]{32}\/(?:frames|latest|batches(?:\/(?:next|\d{1,16}))?)$/;
 
 export function allowedReadOrigin(request: Request, configured = ''): string | null {
   if (!['GET', 'OPTIONS'].includes(request.method) || !readPath.test(new URL(request.url).pathname)) return null;

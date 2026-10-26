@@ -34,7 +34,10 @@ export const CV_LIMITS = Object.freeze({
   bodyBytes: 1536 * 1024, batchFrames: 300, teamPlayers: 15,
   retainedFrames: 300, retainedBytes: 1536 * 1024, receipts: 32, sessions: 4,
   idleMs: 15 * 60 * 1000, lifetimeMs: 2 * 60 * 60 * 1000,
-  bodyReadMs: 10000, requestsPerMinute: 1200, failedAuthPerMinute: 30
+  bodyReadMs: 10000, requestsPerMinute: 1200, failedAuthPerMinute: 30,
+  // Durable batch archive (Cloudflare SQLite): every accepted batch is stored per session until
+  // the session expires/is deleted. 4 sessions x 768 MiB stays under the 5 GB free SQLite quota.
+  archiveBytes: 768 * 1024 * 1024, batchListLimit: 100
 });
 
 export class CvError extends Error {
