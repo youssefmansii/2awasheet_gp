@@ -1,0 +1,8 @@
+fastapi>=0.110
+uvicorn[standard]>=0.29
+numpy>=1.26
+pandas>=2.1
+scipy>=1.11
+orjson>=3.9
+python-multipart>=0.0.9
+accessible-space>=2.1.0

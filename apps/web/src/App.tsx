@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { DropZone } from './components/DropZone';
+import { announceMatchFile } from './components/analytics/bridge'; // lets Advanced Analytics see the opened files
 import { HighlightControls } from './components/HighlightControls';
 import { advanceHighlightPlayback, buildHighlights, nearestHighlightTime } from './replay/highlights';
 import { LiveApi } from './components/LiveApi';
@@ -128,6 +129,7 @@ export function App() {
   [events, data, ranges, trackingEventMismatch]);
 
   const loadMetadata = useCallback(async (file: File) => {
+    announceMatchFile('metadata', file);
     setMetadataName(file.name);
     setMetadataError(undefined);
     try {
@@ -149,6 +151,7 @@ export function App() {
     workerRef.current?.terminate();
     workloadWorkerRef.current?.terminate();
     trackingFileRef.current = file;
+    announceMatchFile('tracking', file);
     setTrackingName(file.name);
     setLoading(true);
     setProgress(0);
@@ -192,6 +195,7 @@ export function App() {
     setPlaybackView('timeline');
     setEvents(null);
     setEventName(file.name);
+    announceMatchFile('events', file);
     setEventError(undefined);
     setEventLoading(true);
     setEventProgress(0);

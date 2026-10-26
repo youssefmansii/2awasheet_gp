@@ -1,0 +1,56 @@
+{
+ "version": "2.0",
+ "features": [
+  "distance",
+  "log_distance",
+  "angle",
+  "header",
+  "free_kick",
+  "n_block",
+  "gk_dist",
+  "gk_off_line",
+  "n_close"
+ ],
+ "caps": {
+  "n_block": 4,
+  "gk_dist": 15,
+  "gk_off_line": 10,
+  "n_close": 3
+ },
+ "coef": {
+  "distance": -0.1807,
+  "log_distance": 1.674495,
+  "angle": 3.033094,
+  "header": -0.762978,
+  "free_kick": 1.160702,
+  "n_block": -0.291111,
+  "gk_dist": 0.186973,
+  "gk_off_line": 0.065729,
+  "n_close": -0.331739
+ },
+ "intercept": -5.589654,
+ "penalty_xg": 0.79,
+ "training": "StatsBomb open data (non-penalty shots with freeze frames): UEFA Euro 2020, Euro 2024, AFCON 2023, Bundesliga 2023/24, Ligue 1 2022/23, MLS 2023 (open matches), Premier League 2015/16 (first 200 matches) - 10708 shots, 996 goals. World Cup 2022 NOT used for training.",
+ "units": "metres, goal centre at (0,0); n_block = outfield opponents inside the triangle ball-post-post; gk_dist = keeper to goal-line centre; gk_off_line = keeper distance from the line ball->goal centre; n_close = opponents within 3 m of the shooter",
+ "validation": {
+  "test": "StatsBomb open data, FIFA World Cup 2022 (64 matches, held out)",
+  "n_shots": 1418,
+  "goals": 150,
+  "this_model": {
+   "log_loss": 0.2709,
+   "brier": 0.0785,
+   "auc": 0.815
+  },
+  "previous_distance_angle_model": {
+   "log_loss": 0.2959,
+   "brier": 0.0857,
+   "auc": 0.768
+  },
+  "statsbomb_xg_reference": {
+   "log_loss": 0.2633,
+   "brier": 0.0752,
+   "auc": 0.82
+  }
+ },
+ "license": "Trained on StatsBomb open data (https://github.com/statsbomb/open-data), free for non-commercial research; credit StatsBomb in any publication."
+}
