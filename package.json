@@ -1,0 +1,32 @@
+{
+  "name": "football-tracking-replay",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.19.0",
+  "scripts": {
+    "demo:possession": "node scripts/run-possession-demo.mjs",
+    "dev": "cd apps/web && node node_modules/vite/bin/vite.js",
+    "build": "tsc -p packages/shared/tsconfig.build.json && cd apps/web && node node_modules/vite/bin/vite.js build",
+    "lint": "eslint apps/web/src apps/web/vite.config.ts apps/api/src apps/api/vite.config.ts apps/cloudflare/src apps/cloudflare/scripts packages/shared/src playwright.config.ts tests/e2e scripts/run-e2e.mjs scripts/run-performance.mjs scripts/smoke-cv-api.mjs scripts/smoke-cloudflare.mjs",
+    "typecheck": "tsc -p packages/shared/tsconfig.json --noEmit && tsc -p apps/web/tsconfig.json --noEmit && tsc -p apps/api/tsconfig.json --noEmit && tsc -p apps/cloudflare/tsconfig.json --noEmit && tsc -p tsconfig.tools.json --noEmit",
+    "test": "node packages/shared/node_modules/vitest/vitest.mjs run packages/shared/src apps/api/src",
+    "build:api": "node apps/web/node_modules/vite/bin/vite.js build --config apps/api/vite.config.ts",
+    "start:api": "node apps/api/dist/server.mjs",
+    "test:api": "node scripts/smoke-cv-api.mjs",
+    "test:analytics": "python -B -m unittest discover -s apps/api/tests -v",
+    "dev:cloudflare": "pnpm --filter tracking-cv-cloudflare dev",
+    "build:cloudflare": "pnpm --filter tracking-cv-cloudflare build",
+    "deploy:cloudflare": "pnpm --filter tracking-cv-cloudflare run deploy",
+    "test:cloudflare": "node scripts/smoke-cloudflare.mjs",
+    "test:performance": "node scripts/run-performance.mjs",
+    "test:e2e": "node scripts/run-e2e.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@playwright/test": "1.55.1",
+    "@types/node": "^24.0.0",
+    "eslint": "^9.17.0",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.0"
+  }
+}

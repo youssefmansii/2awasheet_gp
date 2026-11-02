@@ -1,0 +1,2 @@
+# PDF offsets depend on exact bytes; disable text and line-ending conversion.
+*.pdf binary

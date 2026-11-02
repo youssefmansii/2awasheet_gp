@@ -1,0 +1,38 @@
+node_modules/
+.pnpm-store/
+dist/
+coverage/
+test-results/
+playwright-report/
+output/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+
+# Tracking and match-data captures are local-only.
+*.jsonl
+samples/
+apps/web/public/*.json
+tracking/
+data/
+performance/generated-*.jsonl
+*.tracking.json
+
+# Compressed tracking uploads must never be committed.
+*.jsonl.gz
+*.jsonl.bz2
+*.tracking.gz
+
+# Cloudflare local state and secrets (never publish captures or keys).
+.wrangler/
+.dev.vars
+.dev.vars.*
+apps/cloudflare/public/
+
+# Python analytics generated files and local environments.
+__pycache__/
+*.py[cod]
+.venv/
+.review-python/
