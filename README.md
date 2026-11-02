@@ -1,6 +1,18 @@
 # Football Tracking Replay
 
-A client-only React replay viewer for large football tracking JSONL files. Phase 1 streams the selected file through a Web Worker, stores frame data in compact typed arrays, and renders the pitch imperatively with Canvas 2D.
+A React replay viewer and local possession-analysis demo for large football tracking JSONL files. Replay streams the selected file through a Web Worker and renders the pitch with Canvas 2D; the possession demo uses a local Python companion API.
+
+## Possession and event demo
+
+Run `npm run demo:possession` to open the local tracking-file demo at
+`http://127.0.0.1:5173/?view=possession`. It estimates player interaction,
+likely ball control, provisional team possession and 25 types of event candidates.
+An optional separate events file provides validation after prediction.
+
+See the [setup and demo guide](docs/POSSESSION_DEMO.md) and the
+[complete plain-language PDF](docs/possession_demo_complete_simple_guide.pdf)
+for calculations, examples, validation steps, measured results and limitations.
+Control is currently a heuristic; possession is not an official match statistic.
 
 ## Run locally
 
