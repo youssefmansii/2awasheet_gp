@@ -64,6 +64,10 @@ Provider event codes are retained in the UI and raw event payloads are preserved
 
 No authentication, backend, Supabase connection, or unverified score is included.
 
+## Machine learning: event prediction from tracking
+
+- [`ml/member5`](ml/member5/README.md) - **Member 5: challenges, pressure and fouls.** Predicts PFF pressure type, the pressing player, challenge types, fouls and offside from World Cup 2022 tracking data, with match-grouped cross-validation, figures and a Colab notebook.
+
 ## Environment
 
 Phase 1 requires no environment variables. `.env.example` reserves the Phase 3 server-only Supabase values; never expose the service-role key to the browser.

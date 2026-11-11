@@ -1,0 +1,79 @@
+{
+ "task": "participants",
+ "ball_source": "raw",
+ "n_matches": 63,
+ "held_out_matches": [
+  10517
+ ],
+ "n_challenges": 11129,
+ "possessor_unknown": {
+  "per_player": {
+   "groups": 22243,
+   "groups_with_answer": 22226,
+   "top1_accuracy": 0.716458202105642,
+   "top2_accuracy": 0.8536848735714928,
+   "top3_accuracy": 0.9053810852155134
+  },
+  "baseline_closest_to_ball_and_opponent": {
+   "groups": 22243,
+   "groups_with_answer": 22226,
+   "top1_accuracy": 0.6768649329613966,
+   "top2_accuracy": 0.8270044092504274,
+   "top3_accuracy": 0.8856294429946909
+  },
+  "pair_both_correct": 0.5637934137124347,
+  "pair_at_least_one_correct": 0.8683642253014217,
+  "top_features": {
+   "rank_db": 0.5266,
+   "rank_sum": 0.19,
+   "db_min": 0.0421,
+   "db_0": 0.0324,
+   "ball_z": 0.0267,
+   "vis_frac": 0.025,
+   "db_-0.25": 0.0164,
+   "db_trend": 0.0134,
+   "toward_ball": 0.0109,
+   "rank_db_min": 0.0108,
+   "conf": 0.0108,
+   "nn_ball": 0.0098,
+   "nn_closing": 0.0096,
+   "dn_0.5": 0.0094,
+   "ball_speed": 0.008
+  }
+ },
+ "possessor_given": {
+  "per_player": {
+   "groups": 22243,
+   "groups_with_answer": 22226,
+   "top1_accuracy": 0.8510753171960767,
+   "top2_accuracy": 0.9287321155403582,
+   "top3_accuracy": 0.9541527940250157
+  },
+  "baseline_closest_to_ball_and_opponent": {
+   "groups": 22243,
+   "groups_with_answer": 22226,
+   "top1_accuracy": 0.6768649329613966,
+   "top2_accuracy": 0.8270044092504274,
+   "top3_accuracy": 0.8856294429946909
+  },
+  "pair_both_correct": 0.7100953752024474,
+  "pair_at_least_one_correct": 0.9910023393917582,
+  "top_features": {
+   "rank_d_poss": 0.5129,
+   "d_poss_min": 0.1688,
+   "poss_same_team": 0.0546,
+   "rank_db": 0.0538,
+   "db_0": 0.0337,
+   "is_poss": 0.0321,
+   "d_poss": 0.0284,
+   "db_min": 0.0119,
+   "rank_sum": 0.0117,
+   "vis_frac": 0.0097,
+   "ball_z": 0.0087,
+   "db_0.25": 0.0076,
+   "rank_db_min": 0.0061,
+   "db_trend": 0.0054,
+   "db_0.5": 0.0053
+  }
+ }
+}

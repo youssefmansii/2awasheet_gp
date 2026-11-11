@@ -1,0 +1,8 @@
+numpy
+pandas
+pyarrow
+scipy
+lightgbm
+orjson
+matplotlib
+torch    # only for pff5.deep (transformer)

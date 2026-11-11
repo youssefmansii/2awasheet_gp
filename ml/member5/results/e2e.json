@@ -1,0 +1,30 @@
+{
+ "task": "e2e",
+ "ball_source": "raw",
+ "n_matches": 63,
+ "held_out_matches": [
+  10517
+ ],
+ "detection_threshold": 0.2749280333518982,
+ "challenges_in_data": 11129,
+ "detections": 14584,
+ "true_positives_within_1s": 6294,
+ "detection_precision": 0.4315688425671969,
+ "detection_recall": 0.5655494653607691,
+ "on_true_positives": {
+  "both_participants_correct": 0.5872259294566253,
+  "at_least_one_participant_correct": 0.8733714648871942,
+  "challenge_type_correct": 0.5732443597076581,
+  "duel_vs_tackle_structure_correct": 0.8630441690498888,
+  "winning_team_correct": 0.689108910891089
+ },
+ "fully_correct_challenge_events": {
+  "note": "detected within 1 s AND both players AND type correct, as a share of all real challenges",
+  "recall": 0.18743822445862163
+ },
+ "challenge_fouls_from_tracking_only": {
+  "fouls_in_data": 1441,
+  "precision": 0.3785234899328859,
+  "recall": 0.19569743233865372
+ }
+}

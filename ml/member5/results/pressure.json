@@ -1,0 +1,253 @@
+{
+ "task": "pressure",
+ "ball_source": "raw",
+ "n_matches": 63,
+ "held_out_matches": [
+  10517
+ ],
+ "n_events": 155802,
+ "pressure_type": {
+  "n": 155802,
+  "accuracy": 0.749868422741685,
+  "majority_baseline_accuracy": 0.6693623958614139,
+  "macro_f1": 0.4863394092670479,
+  "per_class": {
+   "N": {
+    "support": 104288,
+    "precision": 0.8746,
+    "recall": 0.8319,
+    "f1": 0.8527
+   },
+   "A": {
+    "support": 5271,
+    "precision": 0.2012,
+    "recall": 0.1512,
+    "f1": 0.1726
+   },
+   "L": {
+    "support": 6399,
+    "precision": 0.2597,
+    "recall": 0.2971,
+    "f1": 0.2772
+   },
+   "P": {
+    "support": 39844,
+    "precision": 0.6039,
+    "recall": 0.6871,
+    "f1": 0.6428
+   }
+  },
+  "confusion_rows_true_cols_pred": [
+   [
+    86757,
+    1689,
+    2451,
+    13391
+   ],
+   [
+    1704,
+    797,
+    646,
+    2124
+   ],
+   [
+    1714,
+    345,
+    1901,
+    2439
+   ],
+   [
+    9016,
+    1131,
+    2321,
+    27376
+   ]
+  ]
+ },
+ "pressure_type_initial_touch": {
+  "n": 79716,
+  "accuracy": 0.796791108434944,
+  "majority_baseline_accuracy": 0.7825656079080736,
+  "macro_f1": 0.4142980536608326,
+  "per_class": {
+   "N": {
+    "support": 62383,
+    "precision": 0.8812,
+    "recall": 0.8826,
+    "f1": 0.8819
+   },
+   "A": {
+    "support": 1627,
+    "precision": 0.2025,
+    "recall": 0.1383,
+    "f1": 0.1644
+   },
+   "L": {
+    "support": 1237,
+    "precision": 0.1978,
+    "recall": 0.0437,
+    "f1": 0.0715
+   },
+   "P": {
+    "support": 14469,
+    "precision": 0.5159,
+    "recall": 0.5651,
+    "f1": 0.5394
+   }
+  },
+  "confusion_rows_true_cols_pred": [
+   [
+    55061,
+    519,
+    124,
+    6679
+   ],
+   [
+    798,
+    225,
+    19,
+    585
+   ],
+   [
+    714,
+    59,
+    54,
+    410
+   ],
+   [
+    5908,
+    308,
+    76,
+    8177
+   ]
+  ]
+ },
+ "pressure_type_on_event": {
+  "n": 76086,
+  "accuracy": 0.700707094603475,
+  "majority_baseline_accuracy": 0.5507583523907158,
+  "macro_f1": 0.4962719277132406,
+  "per_class": {
+   "N": {
+    "support": 41905,
+    "precision": 0.8634,
+    "recall": 0.7564,
+    "f1": 0.8064
+   },
+   "A": {
+    "support": 3644,
+    "precision": 0.2006,
+    "recall": 0.157,
+    "f1": 0.1761
+   },
+   "L": {
+    "support": 5162,
+    "precision": 0.2621,
+    "recall": 0.3578,
+    "f1": 0.3026
+   },
+   "P": {
+    "support": 25375,
+    "precision": 0.6513,
+    "recall": 0.7566,
+    "f1": 0.7
+   }
+  },
+  "confusion_rows_true_cols_pred": [
+   [
+    31696,
+    1170,
+    2327,
+    6712
+   ],
+   [
+    906,
+    572,
+    627,
+    1539
+   ],
+   [
+    1000,
+    286,
+    1847,
+    2029
+   ],
+   [
+    3108,
+    823,
+    2245,
+    19199
+   ]
+  ]
+ },
+ "pressured_vs_not": {
+  "n": 155802,
+  "positives": 51514,
+  "base_rate": 0.33063760413858617,
+  "average_precision": 0.7877728037628884,
+  "auc": 0.8890694916712971,
+  "best_f1": 0.7279563246806757,
+  "best_f1_threshold": 0.5173956155776978,
+  "precision_at_best": 0.6525191591517651,
+  "recall_at_best": 0.823116046123384
+ },
+ "presser_pick": {
+  "model": {
+   "groups": 51415,
+   "groups_with_answer": 48913,
+   "top1_accuracy": 0.8005642671682375,
+   "top2_accuracy": 0.9179154825915401,
+   "top3_accuracy": 0.9564532946251508
+  },
+  "baseline_nearest_opponent": {
+   "groups": 51415,
+   "groups_with_answer": 48913,
+   "top1_accuracy": 0.735264653568581,
+   "top2_accuracy": 0.8684807719829084,
+   "top3_accuracy": 0.9216159303252714
+  },
+  "events_with_presser": 51429,
+  "presser_among_candidates": 0.9510781854595656
+ },
+ "end_to_end": {
+  "pressured_events": 51429,
+  "detected_as_pressured": 0.7587936767193607,
+  "presser_correct_given_true_pressure": 0.7613992105621342,
+  "type_and_presser_both_correct": 0.46495168095821426
+ },
+ "top_features_type": {
+  "c0_d_0.25": 0.0691,
+  "c0_d_0": 0.0629,
+  "hold": 0.0587,
+  "pe_type": 0.0509,
+  "ps1": 0.0464,
+  "c0_d_min": 0.042,
+  "c0_cand_ball_d": 0.038,
+  "ball_act_dist": 0.0338,
+  "ball_speed_p25": 0.0333,
+  "c0_lane_dist": 0.0305,
+  "c0_cand_toward": 0.0239,
+  "ball_out_len": 0.0173,
+  "ps2": 0.0172,
+  "act_dist_own_goal": 0.0156,
+  "ball_z_m25": 0.014
+ },
+ "top_features_presser": {
+  "d_ratio_nearest": 0.5069,
+  "cand_ball_d": 0.142,
+  "rank": 0.0654,
+  "ball_act_dist": 0.032,
+  "lane_dist": 0.0163,
+  "cand_ball_d_p5": 0.0138,
+  "n_opp_5": 0.0119,
+  "cand_conf": 0.0107,
+  "d_0.5": 0.01,
+  "cand_toward": 0.0091,
+  "mate_d1": 0.0089,
+  "n_opp_10": 0.0088,
+  "side_goal": 0.0082,
+  "cand_ball_d_p1": 0.0076,
+  "ball_z_m25": 0.0076
+ },
+ "single_match_debug": false
+}

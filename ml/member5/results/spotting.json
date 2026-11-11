@@ -1,0 +1,72 @@
+{
+ "task": "spotting",
+ "ball_source": "raw",
+ "n_matches": 63,
+ "held_out_matches": [
+  10517
+ ],
+ "n_challenges": 11129,
+ "frame_level": {
+  "n": 983191,
+  "positives": 106224,
+  "base_rate": 0.1080400451183951,
+  "average_precision": 0.5625998605102237,
+  "auc": 0.9047518098600813,
+  "best_f1": 0.5544161942790349,
+  "best_f1_threshold": 0.12212469428777695,
+  "precision_at_best": 0.489884800115561,
+  "recall_at_best": 0.6385280162675102
+ },
+ "tolerance_1s": {
+  "average_precision": 0.45849492939729963,
+  "best_f1": 0.4895578112238945,
+  "precision": 0.4315688425671969,
+  "recall": 0.5655494653607691,
+  "threshold": 0.2749280333518982,
+  "max_recall": 0.9304519723245575
+ },
+ "tolerance_2s": {
+  "average_precision": 0.5389724765822644,
+  "best_f1": 0.5472256181724967,
+  "precision": 0.487630025302221,
+  "recall": 0.6234162997573905,
+  "threshold": 0.2809230089187622,
+  "max_recall": 0.9653158414951928
+ },
+ "baseline_proximity_rule": {
+  "tolerance_1s": {
+   "average_precision": 0.23204819291007597,
+   "best_f1": 0.3171785971576397,
+   "precision": 0.24952341697150807,
+   "recall": 0.4351693773025429,
+   "threshold": 0.3045312166213989,
+   "max_recall": 0.9167041063887141
+  },
+  "tolerance_2s": {
+   "average_precision": 0.32688524105020433,
+   "best_f1": 0.39199258318167773,
+   "precision": 0.3172168500611315,
+   "recall": 0.5128942402731602,
+   "threshold": 0.31068116426467896,
+   "max_recall": 0.9662143948243328
+  }
+ },
+ "top_features": {
+  "b_second_team_rmin": 0.2097,
+  "pair_ball_max": 0.0504,
+  "ball_z_m1": 0.0474,
+  "b_d2_any": 0.0436,
+  "pair_ball_min_p0.3": 0.0368,
+  "mean_speed_m1": 0.0209,
+  "out_margin": 0.0208,
+  "ball_speed_p1": 0.0158,
+  "near_opp_d_p0.3": 0.0155,
+  "ball_speed_rstd": 0.0142,
+  "near_opp_d": 0.0136,
+  "mid_x_abs": 0.0129,
+  "mid_y_abs": 0.0127,
+  "mid_goal_d": 0.0117,
+  "mean_speed": 0.0116
+ },
+ "single_match_debug": false
+}

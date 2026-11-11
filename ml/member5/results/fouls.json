@@ -1,0 +1,426 @@
+{
+ "task": "fouls",
+ "ball_source": "raw",
+ "n_matches": 63,
+ "held_out_matches": [
+  10517
+ ],
+ "n_events": 87244,
+ "n_infringements": 2076,
+ "foul_given_any_event": {
+  "all_events": {
+   "n": 87244,
+   "positives": 1792,
+   "base_rate": 0.02054009444775572,
+   "average_precision": 0.5158837169205784,
+   "auc": 0.9601121097224172,
+   "best_f1": 0.5248034697750067,
+   "best_f1_threshold": 0.2176036834716797,
+   "precision_at_best": 0.5102793885081708,
+   "recall_at_best": 0.5401785714285714
+  },
+  "challenges_only": {
+   "n": 11129,
+   "positives": 1441,
+   "base_rate": 0.12948153472908616,
+   "average_precision": 0.5889143237084198,
+   "auc": 0.8889386327391005,
+   "best_f1": 0.5724358974358975,
+   "best_f1_threshold": 0.23977960646152496,
+   "precision_at_best": 0.5318642048838594,
+   "recall_at_best": 0.6197085357390701
+  },
+  "non_challenge_events": {
+   "n": 76115,
+   "positives": 351,
+   "base_rate": 0.004611443210930828,
+   "average_precision": 0.16488517793366506,
+   "auc": 0.910257087122089,
+   "best_f1": 0.2620904836193448,
+   "best_f1_threshold": 0.08935487270355225,
+   "precision_at_best": 0.2896551724137931,
+   "recall_at_best": 0.23931623931623933
+  },
+  "top_features": {
+   "pe_type": 0.2815,
+   "post_ball_move_3_5": 0.0973,
+   "post_mean_speed_5": 0.0607,
+   "recv_margin_2": 0.044,
+   "post_ball_speed_5": 0.0325,
+   "act_x": 0.0231,
+   "ball_z": 0.0223,
+   "post_ball_out_2": 0.022,
+   "post_ball_move_0_3": 0.0191,
+   "off_max_margin": 0.0186,
+   "recv_margin_1": 0.0169,
+   "post_ball_out_5": 0.0154,
+   "off_line_x": 0.0149,
+   "post_ball_speed_med_5": 0.0141,
+   "act_dist_own_goal": 0.0141
+  }
+ },
+ "any_infringement_incl_advantage_and_missed": {
+  "n": 87244,
+  "positives": 2076,
+  "base_rate": 0.02379533263032415,
+  "average_precision": 0.4842191930381278,
+  "auc": 0.9464986148198261,
+  "best_f1": 0.4977578475336323,
+  "best_f1_threshold": 0.1942090541124344,
+  "precision_at_best": 0.46560402684563756,
+  "recall_at_best": 0.5346820809248555
+ },
+ "offside": {
+  "non_challenge_events": {
+   "n": 76115,
+   "positives": 244,
+   "base_rate": 0.0032056756224134535,
+   "average_precision": 0.11454588323862365,
+   "auc": 0.9262969760363309,
+   "best_f1": 0.2383177570093458,
+   "best_f1_threshold": 0.10345129668712616,
+   "precision_at_best": 0.27717391304347827,
+   "recall_at_best": 0.20901639344262296
+  },
+  "top_features": {
+   "recv_margin_2": 0.2117,
+   "off_max_margin": 0.0733,
+   "ball_adv_2": 0.0672,
+   "recv_margin_1": 0.0505,
+   "post_mean_speed_5": 0.0311,
+   "recv_margin_3": 0.0283,
+   "post_ball_move_3_5": 0.025,
+   "ball_adv_3": 0.023,
+   "ball_z": 0.0213,
+   "ball_act_dist": 0.0212,
+   "recv_dist_3": 0.0201,
+   "recv_dist_2": 0.0195,
+   "post_ball_out_1": 0.019,
+   "recv_dist_1": 0.019,
+   "ball_speed": 0.0181
+  }
+ },
+ "foul_type_I_A_M": {
+  "n": 2076,
+  "accuracy": 0.8978805394990366,
+  "majority_baseline_accuracy": 0.8631984585741811,
+  "macro_f1": 0.5560680256354359,
+  "per_class": {
+   "I": {
+    "support": 1792,
+    "precision": 0.9116,
+    "recall": 0.9894,
+    "f1": 0.9489
+   },
+   "A": {
+    "support": 159,
+    "precision": 0.7217,
+    "recall": 0.522,
+    "f1": 0.6058
+   },
+   "M": {
+    "support": 125,
+    "precision": 0.5,
+    "recall": 0.064,
+    "f1": 0.1135
+   }
+  },
+  "confusion_rows_true_cols_pred": [
+   [
+    1773,
+    12,
+    7
+   ],
+   [
+    75,
+    83,
+    1
+   ],
+   [
+    97,
+    20,
+    8
+   ]
+  ],
+  "top_features": {
+   "post_mean_speed_5": 0.189,
+   "post_ball_move_3_5": 0.0809,
+   "post_ball_speed_5": 0.0486,
+   "recv_margin_2": 0.039,
+   "off_line_x": 0.0346,
+   "post_players_speed_min_5": 0.0315,
+   "post_ball_out_5": 0.0302,
+   "post_mean_speed_3": 0.0287
+  }
+ },
+ "offense_type": {
+  "n": 2054,
+  "accuracy": 0.9148003894839338,
+  "majority_baseline_accuracy": 0.7925998052580331,
+  "macro_f1": 0.35764662401022135,
+  "per_class": {
+   "N": {
+    "support": 1628,
+    "precision": 0.9501,
+    "recall": 0.9939,
+    "f1": 0.9715
+   },
+   "O": {
+    "support": 245,
+    "precision": 0.7932,
+    "recall": 0.9551,
+    "f1": 0.8667
+   },
+   "H": {
+    "support": 77,
+    "precision": 0.5806,
+    "recall": 0.2338,
+    "f1": 0.3333
+   },
+   "F": {
+    "support": 55,
+    "precision": 0.3684,
+    "recall": 0.1273,
+    "f1": 0.1892
+   },
+   "T": {
+    "support": 21,
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1": 0.0
+   },
+   "D": {
+    "support": 22,
+    "precision": 0.3333,
+    "recall": 0.0909,
+    "f1": 0.1429
+   },
+   "V": {
+    "support": 6,
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1": 0.0
+   }
+  },
+  "confusion_rows_true_cols_pred": [
+   [
+    1618,
+    6,
+    2,
+    2,
+    0,
+    0,
+    0
+   ],
+   [
+    6,
+    234,
+    4,
+    1,
+    0,
+    0,
+    0
+   ],
+   [
+    38,
+    19,
+    18,
+    2,
+    0,
+    0,
+    0
+   ],
+   [
+    16,
+    26,
+    5,
+    7,
+    0,
+    1,
+    0
+   ],
+   [
+    6,
+    5,
+    2,
+    5,
+    0,
+    3,
+    0
+   ],
+   [
+    13,
+    5,
+    0,
+    2,
+    0,
+    2,
+    0
+   ],
+   [
+    6,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  ],
+  "top_features": {
+   "pe_type": 0.4508,
+   "ball_adv_1": 0.0519,
+   "off_max_margin": 0.0369,
+   "ball_adv_2": 0.031,
+   "ball_speed": 0.0242,
+   "ball_z": 0.0231,
+   "recv_margin_2": 0.0223,
+   "ball_act_dist": 0.0189
+  }
+ },
+ "foul_outcome_cards": {
+  "n": 2071,
+  "accuracy": 0.8363109608884597,
+  "majority_baseline_accuracy": 0.8319652341863834,
+  "macro_f1": 0.1698840610426403,
+  "per_class": {
+   "N": {
+    "support": 1723,
+    "precision": 0.8367,
+    "recall": 0.9994,
+    "f1": 0.9109
+   },
+   "Y": {
+    "support": 211,
+    "precision": 0.8,
+    "recall": 0.0379,
+    "f1": 0.0724
+   },
+   "F": {
+    "support": 108,
+    "precision": 0.6667,
+    "recall": 0.0185,
+    "f1": 0.036
+   },
+   "W": {
+    "support": 26,
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1": 0.0
+   },
+   "S": {
+    "support": 2,
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1": 0.0
+   },
+   "R": {
+    "support": 1,
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1": 0.0
+   }
+  },
+  "confusion_rows_true_cols_pred": [
+   [
+    1722,
+    0,
+    1,
+    0,
+    0,
+    0
+   ],
+   [
+    203,
+    8,
+    0,
+    0,
+    0,
+    0
+   ],
+   [
+    104,
+    2,
+    2,
+    0,
+    0,
+    0
+   ],
+   [
+    26,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   [
+    2,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   [
+    1,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  ],
+  "top_features": {
+   "pe_type": 0.05,
+   "post_ball_speed_5": 0.0469,
+   "ball_speed": 0.0382,
+   "post_mean_speed_5": 0.0373,
+   "act_speed": 0.0361,
+   "off_max_margin": 0.0351,
+   "post_ball_move_3_5": 0.0342,
+   "ball_act_dist": 0.0335
+  }
+ },
+ "var_used": {
+  "n": 2076,
+  "positives": 22,
+  "base_rate": 0.010597302504816955,
+  "average_precision": 0.0714235645843347,
+  "auc": 0.8204833141542003,
+  "best_f1": 0.17094017094017094,
+  "best_f1_threshold": 0.023186715319752693,
+  "precision_at_best": 0.10526315789473684,
+  "recall_at_best": 0.45454545454545453
+ },
+ "culprit_pick": {
+  "groups": 1785,
+  "groups_with_answer": 1785,
+  "top1_accuracy": 0.6112044817927171,
+  "top2_accuracy": 0.788235294117647,
+  "top3_accuracy": 0.8784313725490196,
+  "answer_among_candidates": 0.8598265895953757,
+  "baseline_nearest_player": {
+   "groups": 1785,
+   "groups_with_answer": 1785,
+   "top1_accuracy": 0.10868347338935574,
+   "top2_accuracy": 0.2722689075630252,
+   "top3_accuracy": 0.7294117647058823
+  }
+ },
+ "victim_pick": {
+  "groups": 1621,
+  "groups_with_answer": 1621,
+  "top1_accuracy": 0.8685996298581122,
+  "top2_accuracy": 0.9383096853793954,
+  "top3_accuracy": 0.9623689080814312,
+  "answer_among_candidates": 0.7808285163776493,
+  "baseline_nearest_player": {
+   "groups": 1621,
+   "groups_with_answer": 1621,
+   "top1_accuracy": 0.8420727945712523,
+   "top2_accuracy": 0.8846391116594695,
+   "top3_accuracy": 0.946329426280074
+  }
+ }
+}
