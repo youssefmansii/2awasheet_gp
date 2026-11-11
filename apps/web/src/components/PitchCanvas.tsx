@@ -260,8 +260,10 @@ export function PitchCanvas(props: PitchCanvasProps) {
           const actor = current.eventOverlay.playerKey ? playerPoints.get(current.eventOverlay.playerKey) : undefined;
           const target = current.eventOverlay.targetKey ? playerPoints.get(current.eventOverlay.targetKey) : undefined;
           context.globalAlpha = 1;
-          if (actor && target && current.eventOverlay.type === 'PA') {
-            context.strokeStyle = 'rgba(255,255,255,.9)';
+          // PA: pass line.  Member 5 model events: CH challenge pair, FO foul (culprit -> victim), PR presser -> player on the ball
+          const linkColor: Record<string, string> = { PA: 'rgba(255,255,255,.9)', CH: '#fb923c', FO: '#f87171', PR: '#facc15' };
+          if (actor && target && linkColor[current.eventOverlay.type]) {
+            context.strokeStyle = linkColor[current.eventOverlay.type]!;
             context.lineWidth = 2;
             context.setLineDash([6, 5]);
             context.beginPath();

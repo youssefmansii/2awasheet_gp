@@ -30,8 +30,11 @@ from .train import (ATTR_POSS, CH_OUTCOMES, CH_TYPES, DRIBBLE_TYPES, FOUL_OUTCOM
 
 
 class Member5:
-    def __init__(self, run_dir: str):
+    def __init__(self, run_dir: str, fold: int | None = None):
+        """fold: use the cross-validation model that did NOT see that fold's matches
+        (for an honest demo on a match that was part of training)."""
         import lightgbm as lgb
+        self.fold = fold
         self.dir = os.path.join(run_dir, "models")
         self._lgb = lgb
         self._cache = {}
@@ -48,7 +51,9 @@ class Member5:
             else:
                 with open(path + ".json") as f:
                     meta = json.load(f)
-                self._cache[name] = (self._lgb.Booster(model_file=path), meta)
+                fp = os.path.join(self.dir, f"{name}.fold{self.fold}.txt")
+                use = fp if self.fold is not None and os.path.exists(fp) else path
+                self._cache[name] = (self._lgb.Booster(model_file=use), meta)
         return self._cache[name]
 
     def _predict(self, name, df):
@@ -106,6 +111,8 @@ class Member5:
         out.loc[w, ["p_N", "p_A", "p_L", "p_P"]] = proba
         out.loc[w, "pressureType"] = np.array(PRESSURE_LABELS)[typ]
         out.loc[w, "pressurePlayerId"] = np.where(typ > 0, self._pid(m, best), -1)
+        out["likelyPresserPlayerId"] = -1          # best candidate even when the type model says "no pressure"
+        out.loc[w, "likelyPresserPlayerId"] = self._pid(m, best)
         # core answer: pressured yes / no, with a confidence the team can threshold on
         out["pressured"] = (1.0 - out["p_N"].values) > 0.5
         out["pressured_confidence"] = np.maximum(out["p_N"].values, 1.0 - out["p_N"].values)

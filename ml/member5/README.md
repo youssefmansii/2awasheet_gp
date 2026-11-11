@@ -83,6 +83,43 @@ foul right after it happens; it does not predict it in advance.
 
 ![ROC curves](figures/03_roc_curves.png)
 
+## Live demo in the replay app
+
+The team's replay app (`apps/web`) plays the tracking data on a pitch. Member 5's predictions
+load into it as an event file, with a **Pressure** filter added next to Challenges and Fouls,
+and a coloured line on the pitch for each predicted event:
+
+| Filter | What the model predicted | Line on the pitch |
+|---|---|---|
+| Challenges | challenges found **from tracking alone**: type, winner | orange, between the two players |
+| Fouls | fouls (fouling player -> fouled player) and offside passes | red |
+| Pressure | pressure type on the player on the ball, and the pressing player | yellow |
+
+**1. Predict a match (Python, about 1-3 minutes):**
+
+```bash
+pip install numpy pandas scipy lightgbm orjson
+python -m pff5.predict_match --tracking 3816.jsonl --events "3816(events).json" --metadata 3816.json \
+    --run models_for_3816/raw --out 3816_member5_events.json
+```
+
+The event file is read only for the event moments, the player on the ball and the names (the
+part other members detect); no labels are read from it. `models_for_3816` are the
+cross-validation models trained on 51 matches that do not include match 3816.
+
+**2. Show it (Node.js 20+):**
+
+```bash
+corepack enable
+pnpm install
+pnpm dev            # open http://localhost:5173
+```
+
+Choose the tracking file (`3816.jsonl`), the metadata (`3816.json`) and
+`3816_member5_events.json` as the events file. Load PFF's own `3816(events).json` instead to
+compare with the annotators. In this match Argentina had three goals disallowed for
+offside; the model flags offside at 26:53 and 34:08, the moments of two of them.
+
 ## What it needs from the rest of the team
 
 * **Pressure and fouls:** the frame and the player on the ball for each event (the event
@@ -118,6 +155,7 @@ local); `results/` holds the cross-validation metrics the figures are built from
 |---|---|
 | Data conversion, features, LightGBM models, cross-validation | done, all 63 matches |
 | Prediction API (`pff5/predict.py`) | done, tested on the held-out final |
+| Live demo: `pff5/predict_match.py` + replay app | done, tested on match 3816 |
 | Figures (`pff5/figures.py`) | done |
 | Transformer, deep learning (`pff5/deep.py`) | written; pre-training run on Colab GPU, fine-tuning in progress |
 | Test score on the held-out final (`pff5/holdout.py`) | written, not run yet |

@@ -1,7 +1,7 @@
 import type { MatchEvent } from '@replay/shared';
 import { useState } from 'react';
 
-export type EventFilter = 'ALL' | 'PA' | 'SH' | 'CH' | 'CR' | 'FO' | 'SUB';
+export type EventFilter = 'ALL' | 'PA' | 'SH' | 'CH' | 'CR' | 'FO' | 'PR' | 'SUB';
 
 const FILTERS: Array<{ value: EventFilter; label: string }> = [
   { value: 'ALL', label: 'Highlights' },
@@ -10,6 +10,7 @@ const FILTERS: Array<{ value: EventFilter; label: string }> = [
   { value: 'CH', label: 'Challenges' },
   { value: 'CR', label: 'Crosses' },
   { value: 'FO', label: 'Fouls' },
+  { value: 'PR', label: 'Pressure' },
   { value: 'SUB', label: 'Subs' }
 ];
 
